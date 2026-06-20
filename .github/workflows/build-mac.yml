@@ -1,0 +1,35 @@
+name: Build macOS App
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:  # 手动触发
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements-mac.txt
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller --noconfirm build_tools/voiceflow_mac.spec
+
+      - name: Upload .app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoiceFlow-macOS
+          path: dist/VoiceFlow.app
+          retention-days: 30

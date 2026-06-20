@@ -1,0 +1,40 @@
+# Voice Flow macOS 依赖
+# 排除 Windows 专用包：pycaw, pywin32, winsound, comtypes, wmi
+# 构建：pip install -r requirements-mac.txt
+
+# ── GUI ──
+PySide6>=6.5
+
+# ── 音频 ──
+numpy>=2.0
+sounddevice>=0.5
+
+# ── 网络 ──
+httpx>=0.28
+httpx-sse>=0.4
+websocket-client>=1.8
+aiohttp>=3.9
+
+# ── 加密 ──
+cryptography>=43.0
+
+# ── 快捷键 + 注入 ──
+pynput>=1.7
+pyautogui>=0.9
+pyperclip>=1.9
+psutil>=6.0
+
+# ── SSH（部署用） ──
+paramiko>=3.5
+
+# ── LLM SDK ──
+openai>=1.0
+
+# ── 阿里云 STT ──
+dashscope>=1.20
+
+# ── TTS（可选） ──
+edge-tts>=7.0
+
+# ── 打包（仅 CI 需要） ──
+pyinstaller>=5.13,<6.0
