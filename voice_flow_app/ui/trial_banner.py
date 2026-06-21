@@ -275,14 +275,21 @@ class SidebarLicenseBanner(QWidget):
         self.setFixedHeight(90)
 
     def _show_activated(self):
-        self._tag.setText("PRO")
+        self._tag.setText("PRO TRIAL")
         self._tag.setStyleSheet(
             "color: #4ade80; font-size: 10px; font-weight: 700; letter-spacing: 1px;"
         )
-        self._status.setText(self._lm.get_status_text())
-        self._progress.setVisible(False)
+        usage = self._lm.get_license_usage()
+        if usage:
+            self._status.setText(f"已使用 {usage['used']} 天 / 共 {usage['total']} 天")
+            self._progress.setVisible(True)
+            self._progress.setRange(0, usage["total"])
+            self._progress.setValue(usage["used"])
+        else:
+            self._status.setText(self._lm.get_status_text())
+            self._progress.setVisible(False)
         self._btn.setVisible(False)
-        self.setFixedHeight(60)
+        self.setFixedHeight(80)
 
     def _show_expired(self):
         self._tag.setText("已过期")

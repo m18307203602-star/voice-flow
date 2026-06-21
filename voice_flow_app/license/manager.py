@@ -36,6 +36,7 @@ class LicenseManager:
         self._license_payload: str | None = None
         self._decoded_payload: dict | None = None
         self._last_validation: float | None = None
+        self._activated_at: float | None = None  # 首次激活时间戳
         self._machine_code: str | None = None
         self._heartbeat_thread: threading.Thread | None = None
         self._heartbeat_stop = threading.Event()
@@ -87,6 +88,38 @@ class LicenseManager:
     def get_remaining_days(self) -> int:
         return self._remaining_days
 
+    def get_license_usage(self) -> dict | None:
+        """返回许可证用量信息（供 UI 横幅使用）
+
+        Returns:
+            {"used": int, "total": int} 或 None（无法计算时）
+            - TRIAL_ACTIVE: used = 已使用天数, total = 7
+            - ACTIVATED: used = 激活后已过天数, total = 许可证总天数
+        """
+        if self._state == LicenseState.TRIAL_ACTIVE:
+            return {
+                "used": TRIAL_DAYS - self._remaining_days,
+                "total": TRIAL_DAYS,
+            }
+        elif self._state == LicenseState.ACTIVATED:
+            at = self._activated_at or self._last_validation
+            if not at or not self._decoded_payload:
+                return None
+            exp_str = self._decoded_payload.get("e", "")
+            if not exp_str or exp_str == "permanent":
+                return None
+            try:
+                from datetime import datetime
+                now = datetime.utcnow()
+                activated = datetime.utcfromtimestamp(at)
+                expires = datetime.fromisoformat(exp_str)
+                used = max(0, (now - activated).days)
+                total = max(used, (expires - activated).days)
+                return {"used": used, "total": total}
+            except Exception:
+                return None
+        return None
+
     # ── Startup ──
 
     def load_state(self) -> LicenseState:
@@ -129,6 +162,8 @@ class LicenseManager:
                 self._license_payload = result["license_payload"]
                 self._decoded_payload = verified
                 self._last_validation = time.time()
+                if not is_trial and not self._activated_at:
+                    self._activated_at = time.time()  # 首次正式激活
                 self._save_license_file()
                 exp = verified.get("e", "")
                 if is_trial:
@@ -272,6 +307,7 @@ class LicenseManager:
                 data = json.load(f)
             self._license_payload = data.get("payload")
             self._last_validation = data.get("last_validation")
+            self._activated_at = data.get("activated_at")
             if self._license_payload:
                 from .crypto import verify_license_payload
                 self._decoded_payload = verify_license_payload(self._license_payload)
@@ -288,6 +324,7 @@ class LicenseManager:
                 {
                     "payload": self._license_payload,
                     "last_validation": self._last_validation,
+                    "activated_at": self._activated_at,
                 },
                 f,
                 indent=2,
