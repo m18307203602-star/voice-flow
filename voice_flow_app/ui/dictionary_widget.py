@@ -71,7 +71,14 @@ QLabel#suggestionCount { color: #cdd6f4; font-size: 13px; }
 
 
 class _DarkCheckBox(QCheckBox):
-    """深色主题复选框 — 自绘对号，绕过 Qt stylesheet 自绘模式下对号消失的 bug"""
+    """深色主题复选框 — 自绘对号，放大指示器方便点击"""
+
+    def __init__(self, text: str, parent=None):
+        super().__init__(text, parent)
+        from PySide6.QtGui import QFont
+        font = QFont("Microsoft YaHei", 13)
+        self.setFont(font)
+        self.setMinimumHeight(28)
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -80,14 +87,11 @@ class _DarkCheckBox(QCheckBox):
         opt = QStyleOptionButton()
         self.initStyleOption(opt)
 
-        # ── 方框 ──
-        indicator_rect = self.style().subElementRect(
-            QStyle.SE_CheckBoxIndicator, opt, self
-        )
-        box = QRect(
-            indicator_rect.x() + 2, indicator_rect.y() + 2,
-            indicator_rect.width() - 4, indicator_rect.height() - 4,
-        )
+        # ── 方框（手动放大到 22×22） ──
+        box_size = 22
+        box_x = 3
+        box_y = (self.height() - box_size) // 2
+        box = QRect(box_x, box_y, box_size, box_size)
 
         is_checked = self.isChecked()
         is_hover = opt.state & QStyle.State_MouseOver
@@ -95,33 +99,33 @@ class _DarkCheckBox(QCheckBox):
         if is_checked:
             painter.setBrush(QBrush(QColor("#7c5cfc")))
             painter.setPen(Qt.NoPen)
-            painter.drawRoundedRect(box, 4, 4)
+            painter.drawRoundedRect(box, 5, 5)
         else:
             painter.setBrush(QBrush(QColor("#1c1c2e")))
             border_color = QColor("#7c5cfc") if is_hover else QColor("#3a3a58")
             painter.setPen(QPen(border_color, 2))
-            painter.drawRoundedRect(box, 4, 4)
+            painter.drawRoundedRect(box, 5, 5)
 
         # ── 对号 ✓ ──
         if is_checked:
-            pen = QPen(QColor("#ffffff"), 2.5, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+            pen = QPen(QColor("#ffffff"), 2.8, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
             painter.setPen(pen)
             cx, cy = box.center().x(), box.center().y()
             w, h = box.width(), box.height()
-            # 两条短线组成 ✓
             x1 = int(cx - w * 0.30)
             y1 = int(cy)
             x2 = int(cx - w * 0.05)
-            y2 = int(cy + h * 0.30)
+            y2 = int(cy + h * 0.28)
             x3 = int(cx + w * 0.38)
-            y3 = int(cy - h * 0.22)
+            y3 = int(cy - h * 0.24)
             painter.drawLine(x1, y1, x2, y2)
             painter.drawLine(x2, y2, x3, y3)
 
         # ── 文字 ──
         painter.setPen(QColor("#cdd6f4"))
-        text_rect = self.rect()
-        text_rect.setLeft(indicator_rect.right() + 8)
+        text_x = box_x + box_size + 10
+        text_rect = QRect(text_x, 0, self.width() - text_x, self.height())
+        painter.setFont(self.font())
         painter.drawText(text_rect, Qt.AlignVCenter | Qt.AlignLeft, self.text())
 
 
