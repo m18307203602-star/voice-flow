@@ -269,18 +269,18 @@ class DictionaryWidget(QWidget):
         QMessageBox.information(self, "保存完成", f"已保存 {len(entries)} 条规则。")
 
     def _import(self):
+        """从文件导入 — 支持 CSV 和 JSON"""
         path, _ = QFileDialog.getOpenFileName(
-            self, "导入词库", "", "JSON 文件 (*.json);;所有文件 (*)",
+            self, "导入词库", "",
+            "CSV 文件 (*.csv);;JSON 文件 (*.json);;所有文件 (*)",
         )
         if not path:
             return
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if isinstance(data, dict) and "entries" not in data:
-                entries = data
+            if path.lower().endswith('.csv'):
+                entries = self._parse_csv(path)
             else:
-                entries = data.get("entries", {})
+                entries = self._parse_json(path)
             for find, replace in entries.items():
                 self._dict.add(find, replace)
             self._load_dict_table()
@@ -289,9 +289,38 @@ class DictionaryWidget(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "导入失败", f"文件格式错误：{e}")
 
+    def _parse_csv(self, path: str) -> dict:
+        """解析 CSV：第一列=查找文本，第二列=替换为（跳过表头行）"""
+        import csv
+        entries = {}
+        with open(path, "r", encoding="utf-8-sig") as f:
+            reader = csv.reader(f)
+            for row in reader:
+                if not row or len(row) < 2:
+                    continue
+                find = row[0].strip()
+                replace = row[1].strip()
+                # 跳过表头行
+                if find.lower() in ("查找文本", "find", "from", "原文"):
+                    continue
+                if find:
+                    entries[find] = replace
+        return entries
+
+    def _parse_json(self, path: str) -> dict:
+        """解析 JSON：直接 {find: replace} 或 {"entries": {find: replace}}"""
+        import json
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict) and "entries" not in data:
+            return data
+        return data.get("entries", {})
+
     def _export(self):
+        """导出为 CSV 或 JSON"""
         path, _ = QFileDialog.getSaveFileName(
-            self, "导出词库", "dictionary.json", "JSON 文件 (*.json)",
+            self, "导出词库", "dictionary.csv",
+            "CSV 文件 (*.csv);;JSON 文件 (*.json)",
         )
         if not path:
             return
@@ -304,11 +333,28 @@ class DictionaryWidget(QWidget):
             if find:
                 entries[find] = replace
         try:
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump({"entries": entries}, f, ensure_ascii=False, indent=2)
+            if path.lower().endswith('.csv'):
+                self._write_csv(path, entries)
+            else:
+                self._write_json(path, entries)
             QMessageBox.information(self, "导出完成", f"已导出 {len(entries)} 条规则到：\n{path}")
         except Exception as e:
             QMessageBox.critical(self, "导出失败", str(e))
+
+    def _write_csv(self, path: str, entries: dict):
+        """写入 CSV：两列，带表头"""
+        import csv
+        with open(path, "w", encoding="utf-8-sig", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["查找文本", "替换为"])
+            for find, replace in entries.items():
+                writer.writerow([find, replace])
+
+    def _write_json(self, path: str, entries: dict):
+        """写入 JSON"""
+        import json
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"entries": entries}, f, ensure_ascii=False, indent=2)
 
     # ═══════════════════════════════════════════════
     # Tab 2: 纠错记录
