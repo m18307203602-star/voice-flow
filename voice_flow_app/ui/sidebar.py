@@ -51,7 +51,7 @@ class SidebarWidget(QWidget):
 
     NAV_ITEMS = [
         ("🏠  首页", "stats"),
-        ("🎛️  控制台", "home"),
+        ("🌪️  控制台", "home"),
         ("📋  历史记录", "history"),
         ("📖  词典", "dictionary"),
     ]
