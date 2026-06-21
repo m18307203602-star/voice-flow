@@ -1,5 +1,5 @@
 """许可证状态底栏 — Typeless 风格，显示试用进度 / Pro 状态"""
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton, QProgressBar
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QProgressBar
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QFont
 
@@ -145,3 +145,171 @@ class LicenseBanner(QWidget):
 
 # Backward-compatible alias
 TrialBanner = LicenseBanner
+
+
+# ═══════════════════════════════════════════════════════════════
+# 侧边栏底部许可证横幅 — Typeless 风格
+# ═══════════════════════════════════════════════════════════════
+
+SIDEBAR_BANNER_STYLE = """
+QWidget#sidebarBanner {
+    background-color: #0e0e18;
+    border-top: 1px solid #1e1e30;
+}
+QLabel#sbTrialTag {
+    color: #f59e0b;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+}
+QLabel#sbStatus {
+    color: #8888a8;
+    font-size: 11px;
+}
+QProgressBar#sbProgress {
+    background-color: #1a1a2e;
+    border: none;
+    border-radius: 1px;
+    height: 3px;
+    max-height: 3px;
+    min-height: 3px;
+}
+QProgressBar#sbProgress::chunk {
+    background-color: #7c5cfc;
+    border-radius: 1px;
+}
+QPushButton#sbUpgradeBtn {
+    background-color: transparent;
+    color: #7c5cfc;
+    border: 1px solid #7c5cfc;
+    border-radius: 4px;
+    padding: 3px 12px;
+    font-size: 10px;
+    font-weight: 600;
+}
+QPushButton#sbUpgradeBtn:hover {
+    background-color: #7c5cfc;
+    color: #fff;
+}
+"""
+
+
+class SidebarLicenseBanner(QWidget):
+    """侧边栏底部许可证 — 紧凑竖版 Typeless 风格
+
+    布局（从上到下）：
+      - PRO TRIAL 标签（金色小字）
+      - 已使用 X 天 / 共 Y 天
+      - 细进度条
+      - [升级Pro] 按钮（试用/过期时显示）
+    """
+
+    activate_clicked = Signal()
+
+    def __init__(self, license_manager, parent=None):
+        super().__init__(parent)
+        self.setObjectName("sidebarBanner")
+        self.setStyleSheet(SIDEBAR_BANNER_STYLE)
+        self.setFixedHeight(90)
+        self._lm = license_manager
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 10, 14, 10)
+        layout.setSpacing(4)
+
+        # PRO TRIAL 标签
+        self._tag = QLabel("PRO TRIAL")
+        self._tag.setObjectName("sbTrialTag")
+        layout.addWidget(self._tag)
+
+        # 状态文字：已使用 X 天 / 共 Y 天
+        self._status = QLabel()
+        self._status.setObjectName("sbStatus")
+        layout.addWidget(self._status)
+
+        # 进度条
+        self._progress = QProgressBar()
+        self._progress.setObjectName("sbProgress")
+        self._progress.setRange(0, TRIAL_DAYS)
+        self._progress.setValue(0)
+        self._progress.setVisible(False)
+        self._progress.setTextVisible(False)
+        layout.addWidget(self._progress)
+
+        # 升级按钮
+        self._btn = QPushButton("升级Pro")
+        self._btn.setObjectName("sbUpgradeBtn")
+        self._btn.clicked.connect(self.activate_clicked.emit)
+        self._btn.setVisible(False)
+        layout.addWidget(self._btn)
+
+        layout.addStretch()
+
+        self.refresh()
+
+    def refresh(self):
+        state = self._lm.get_state()
+
+        if state.value == "trial_active":
+            self._show_trial()
+        elif state.value in ("activated", "permanent"):
+            self._show_activated()
+        elif state.value in ("expired", "trial_expired"):
+            self._show_expired()
+        elif state.value == "activated_offline":
+            self._show_offline()
+        else:
+            self._show_locked()
+
+    def _show_trial(self):
+        self._tag.setText("PRO TRIAL")
+        self._tag.setStyleSheet(
+            "color: #f59e0b; font-size: 10px; font-weight: 700; letter-spacing: 1px;"
+        )
+        remaining = max(0, self._lm.get_remaining_days())
+        used = TRIAL_DAYS - remaining
+        self._status.setText(f"已使用 {used} 天 / 共 {TRIAL_DAYS} 天")
+        self._progress.setVisible(True)
+        self._progress.setValue(used)
+        self._btn.setVisible(False)
+        self.setFixedHeight(90)
+
+    def _show_activated(self):
+        self._tag.setText("PRO")
+        self._tag.setStyleSheet(
+            "color: #4ade80; font-size: 10px; font-weight: 700; letter-spacing: 1px;"
+        )
+        self._status.setText(self._lm.get_status_text())
+        self._progress.setVisible(False)
+        self._btn.setVisible(False)
+        self.setFixedHeight(60)
+
+    def _show_expired(self):
+        self._tag.setText("已过期")
+        self._tag.setStyleSheet(
+            "color: #f43f5e; font-size: 10px; font-weight: 700; letter-spacing: 1px;"
+        )
+        self._status.setText(self._lm.get_status_text())
+        self._progress.setVisible(False)
+        self._btn.setVisible(True)
+        self.setFixedHeight(90)
+
+    def _show_offline(self):
+        self._tag.setText("离线")
+        self._tag.setStyleSheet(
+            "color: #f59e0b; font-size: 10px; font-weight: 700; letter-spacing: 1px;"
+        )
+        self._status.setText("请连接网络验证")
+        self._progress.setVisible(False)
+        self._btn.setVisible(False)
+        self.setFixedHeight(60)
+
+    def _show_locked(self):
+        self._tag.setText("未激活")
+        self._tag.setStyleSheet(
+            "color: #f43f5e; font-size: 10px; font-weight: 700; letter-spacing: 1px;"
+        )
+        self._status.setText("软件已锁定")
+        self._progress.setVisible(False)
+        self._btn.setVisible(True)
+        self.setFixedHeight(90)

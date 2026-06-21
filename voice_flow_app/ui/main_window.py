@@ -321,7 +321,6 @@ class MainWindow(QMainWindow):
         self._text_injector = text_injector
         self._license_manager = license_manager
         self._dictionary = dictionary
-        self._trial_banner = None
 
         self.setWindowTitle("Voice Flow")
         self.setMinimumSize(800, 600)
@@ -340,8 +339,9 @@ class MainWindow(QMainWindow):
         self._root.setSpacing(0)
 
         # ── 左侧导航栏 ──
-        self._sidebar = SidebarWidget()
+        self._sidebar = SidebarWidget(license_manager=self._license_manager)
         self._sidebar.current_changed.connect(self._on_sidebar_changed)
+        self._sidebar.banner.activate_clicked.connect(self._on_activate_license)
         self._root.addWidget(self._sidebar)
 
         # ── 右侧内容区（QStackedWidget） ──
@@ -560,12 +560,6 @@ class MainWindow(QMainWindow):
         """)
         self._recent_list.itemClicked.connect(self._on_recent_clicked)
         layout.addWidget(self._recent_list)
-
-        # ── 许可证底栏（Typeless 风格） ──
-        from .trial_banner import LicenseBanner
-        self._trial_banner = LicenseBanner(self._license_manager)
-        self._trial_banner.activate_clicked.connect(self._on_activate_license)
-        layout.addWidget(self._trial_banner)
 
         # ── 法律声明滚动字幕 ──
         self._marquee_text = "此软件已申请专利保护，违法使用将遭受刑事诉讼。"
@@ -1286,9 +1280,9 @@ class MainWindow(QMainWindow):
         from .activation_dialog import ActivationDialog
         dlg = ActivationDialog(self._license_manager, self)
         if dlg.exec():
-            # 激活成功后刷新横幅状态
-            if hasattr(self, '_trial_banner') and self._trial_banner:
-                self._trial_banner.refresh()
+            # 激活成功后刷新侧边栏许可证横幅
+            if hasattr(self, '_sidebar') and self._sidebar:
+                self._sidebar.refresh_banner()
 
     def _on_sidebar_changed(self, index: int):
         """左侧导航切换 → 右侧页面切换"""
