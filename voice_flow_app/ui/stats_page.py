@@ -195,6 +195,21 @@ class StatsPage(QWidget):
 
         layout.addLayout(cards_row)
 
+        # ── 第二行：口述字数 + 节省时间 ──
+        cards_row2 = QHBoxLayout()
+        cards_row2.setSpacing(12)
+
+        self._card_chars = _StatCard("口述字数")
+        cards_row2.addWidget(self._card_chars)
+
+        self._card_saved = _StatCard("节省时间")
+        cards_row2.addWidget(self._card_saved)
+
+        # 占位撑满，保持卡片左对齐
+        cards_row2.addStretch()
+
+        layout.addLayout(cards_row2)
+
         # ── 图表区：扇形图 + 柱状图 ──
         charts_row = QHBoxLayout()
         charts_row.setSpacing(16)
@@ -243,6 +258,29 @@ class StatsPage(QWidget):
 
         # 总次数
         self._card_count.set_value(str(total_count))
+
+        # ── 口述字数 ──
+        if total_chars >= 10000:
+            wan = total_chars / 10000
+            self._card_chars.set_value(f"{wan:.1f} 万字")
+        else:
+            self._card_chars.set_value(f"{total_chars:,} 字")
+
+        # ── 节省时间（相比手打） ──
+        # 假设手打速度 40 字/分钟，节省时间 = 手打耗时 - 口述耗时
+        TYPING_SPEED = 40  # 字/分钟（中文平均手打速度）
+        if total_chars > 0 and total_dur > 0:
+            typing_minutes = total_chars / TYPING_SPEED
+            voice_minutes = total_dur / 60
+            saved_minutes = max(0, typing_minutes - voice_minutes)
+            if saved_minutes >= 60:
+                h = int(saved_minutes // 60)
+                m = int(saved_minutes % 60)
+                self._card_saved.set_value(f"{h}h {m}min" if h > 0 else f"{m} 分钟")
+            else:
+                self._card_saved.set_value(f"{saved_minutes:.0f} 分钟")
+        else:
+            self._card_saved.set_value("—")
 
         # 扇形图：按引擎聚合
         eng_data = {}
