@@ -1,5 +1,5 @@
 """统计页面 — 指标卡片 + 扇形图 + 柱状图"""
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QGridLayout, QSizePolicy
 from PySide6.QtCore import Qt, QRect
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QFontMetrics, QPainterPath, QLinearGradient
 import math
@@ -308,50 +308,70 @@ class StatsPage(QWidget):
         title.setStyleSheet("font-size: 20px; font-weight: bold;")
         layout.addWidget(title)
 
-        # ── 四张指标卡片（一行） ──
-        cards_row = QHBoxLayout()
-        cards_row.setSpacing(12)
+        # ═══════════════════════════════════════════════════
+        # 上半部分：左扇形图 + 右田字卡片
+        # ═══════════════════════════════════════════════════
+        top_row = QHBoxLayout()
+        top_row.setSpacing(20)
+
+        # ── 左：扇形图 ──
+        pie_layout = QVBoxLayout()
+        pie_layout.setSpacing(8)
+        pie_title = QLabel("STT 引擎用量分布")
+        pie_title.setObjectName("sectionTitle")
+        pie_layout.addWidget(pie_title)
+        self._pie = _PieChart()
+        pie_layout.addWidget(self._pie, 1)
+        top_row.addLayout(pie_layout, 3)
+
+        # ── 右：田字形 2×2 卡片 ──
+        cards_grid = QGridLayout()
+        cards_grid.setSpacing(10)
+        cards_grid.setColumnStretch(0, 1)
+        cards_grid.setColumnStretch(1, 1)
+        cards_grid.setRowStretch(0, 1)
+        cards_grid.setRowStretch(1, 1)
 
         self._card_duration = _StatCard("总口述时间")
-        cards_row.addWidget(self._card_duration)
+        cards_grid.addWidget(self._card_duration, 0, 0)
 
         self._card_speed = _StatCard("平均口述速度")
-        cards_row.addWidget(self._card_speed)
+        cards_grid.addWidget(self._card_speed, 0, 1)
 
         self._card_chars = _StatCard("口述字数")
-        cards_row.addWidget(self._card_chars)
+        cards_grid.addWidget(self._card_chars, 1, 0)
 
         self._card_saved = _StatCard("节省时间")
-        cards_row.addWidget(self._card_saved)
+        cards_grid.addWidget(self._card_saved, 1, 1)
 
-        cards_row.addStretch()
-        layout.addLayout(cards_row)
+        top_row.addLayout(cards_grid, 2)
+        layout.addLayout(top_row, 3)
 
-        # ── 图表区：扇形图 + 柱状图 ──
-        charts_row = QHBoxLayout()
-        charts_row.setSpacing(16)
+        # ═══════════════════════════════════════════════════
+        # 下半部分：柱状图（左半）+ 留空（右半）
+        # ═══════════════════════════════════════════════════
+        bottom_row = QHBoxLayout()
+        bottom_row.setSpacing(16)
 
-        left = QVBoxLayout()
-        left.setSpacing(8)
-        chart_title1 = QLabel("STT 引擎用量分布")
-        chart_title1.setObjectName("sectionTitle")
-        left.addWidget(chart_title1)
-
-        self._pie = _PieChart()
-        left.addWidget(self._pie, 1)
-        charts_row.addLayout(left, 1)
-
-        right = QVBoxLayout()
-        right.setSpacing(8)
+        bar_layout = QVBoxLayout()
+        bar_layout.setSpacing(6)
         self._chart_title2 = QLabel("过去 7 天趋势")
         self._chart_title2.setObjectName("sectionTitle")
-        right.addWidget(self._chart_title2)
-
+        bar_layout.addWidget(self._chart_title2)
         self._bar = _BarChart()
-        right.addWidget(self._bar, 1)
-        charts_row.addLayout(right, 1)
+        self._bar.setMinimumHeight(180)
+        self._bar.setMaximumHeight(240)
+        bar_layout.addWidget(self._bar, 1)
+        bottom_row.addLayout(bar_layout, 1)
 
-        layout.addLayout(charts_row, 1)
+        # 右半留空（占位）
+        placeholder = QLabel("")
+        placeholder.setStyleSheet("color: #333350; font-size: 12px;")
+        placeholder.setAlignment(Qt.AlignCenter)
+        placeholder.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        bottom_row.addWidget(placeholder, 1)
+
+        layout.addLayout(bottom_row, 1)
 
     def refresh(self):
         """从 HistoryDB 加载数据并刷新显示"""
