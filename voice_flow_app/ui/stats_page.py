@@ -1,6 +1,6 @@
 """统计页面 — 指标卡片 + 扇形图 + 柱状图"""
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame
-from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QPushButton
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QPainterPath
 import math
 
@@ -161,6 +161,8 @@ class _StatCard(QFrame):
 class StatsPage(QWidget):
     """统计页面"""
 
+    settings_clicked = Signal()
+
     def __init__(self, history_db, parent=None):
         super().__init__(parent)
         self.setObjectName("statsPage")
@@ -174,11 +176,27 @@ class StatsPage(QWidget):
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(16)
 
-        # 标题
+        # 标题行：统计标题 + 设置按钮（右上角）
+        title_row = QHBoxLayout()
         title = QLabel("📊 使用统计")
         title.setObjectName("sectionTitle")
         title.setStyleSheet("font-size: 20px; font-weight: bold;")
-        layout.addWidget(title)
+        title_row.addWidget(title)
+        title_row.addStretch()
+
+        self._btn_settings = QPushButton("⚙ 设置")
+        self._btn_settings.setFixedWidth(100)
+        self._btn_settings.setStyleSheet("""
+            QPushButton {
+                background-color: #222238; color: #e4e4f0;
+                border: 1px solid #2a2a3e; border-radius: 8px;
+                padding: 8px 16px; font-size: 13px; font-weight: 500;
+            }
+            QPushButton:hover { background-color: #2e2e48; border-color: #3a3a58; }
+        """)
+        self._btn_settings.clicked.connect(self.settings_clicked.emit)
+        title_row.addWidget(self._btn_settings)
+        layout.addLayout(title_row)
 
         # ── 三张指标卡片 ──
         cards_row = QHBoxLayout()

@@ -350,6 +350,8 @@ class MainWindow(QMainWindow):
 
         # ── Page 0: 首页（统计页） ──
         self._stats_page = StatsPage(self._history_db)
+        self._stats_page.settings_clicked.connect(self._on_settings)
+        self._btn_settings = self._stats_page._btn_settings  # 录音时禁用设置按钮
         self._stack.addWidget(self._stats_page)
 
         # ── Page 1: 控制台（原首页） ──
@@ -456,12 +458,7 @@ class MainWindow(QMainWindow):
         top_row.addWidget(QLabel("主模型:"))
         top_row.addWidget(self._primary_combo)
 
-        # 设置按钮
         top_row.addStretch()
-        self._btn_settings = QPushButton("⚙ 设置")
-        self._btn_settings.setFixedWidth(100)
-        top_row.addWidget(self._btn_settings)
-
         layout.addLayout(top_row)
 
         # ── 控制栏 ──
@@ -575,7 +572,6 @@ class MainWindow(QMainWindow):
     def _connect_signals(self):
         # 按钮
         self._btn_record.clicked.connect(self._on_record_clicked)
-        self._btn_settings.clicked.connect(self._on_settings)
         self._mode_combo.currentIndexChanged.connect(self._on_mode_combo_changed)
 
         # 引擎切换已由 QAction.toggled 连接，无需额外处理
