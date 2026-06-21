@@ -158,21 +158,21 @@ QWidget#sidebarBanner {
 }
 QLabel#sbTrialTag {
     color: #f59e0b;
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 1px;
 }
 QLabel#sbStatus {
     color: #8888a8;
-    font-size: 11px;
+    font-size: 12px;
 }
 QProgressBar#sbProgress {
     background-color: #1a1a2e;
     border: none;
-    border-radius: 1px;
-    height: 3px;
-    max-height: 3px;
-    min-height: 3px;
+    border-radius: 2px;
+    height: 5px;
+    max-height: 5px;
+    min-height: 5px;
 }
 QProgressBar#sbProgress::chunk {
     background-color: #7c5cfc;
@@ -183,8 +183,8 @@ QPushButton#sbUpgradeBtn {
     color: #7c5cfc;
     border: 1px solid #7c5cfc;
     border-radius: 4px;
-    padding: 3px 12px;
-    font-size: 10px;
+    padding: 4px 14px;
+    font-size: 11px;
     font-weight: 600;
 }
 QPushButton#sbUpgradeBtn:hover {
@@ -264,7 +264,7 @@ class SidebarLicenseBanner(QWidget):
     def _show_trial(self):
         self._tag.setText("PRO TRIAL")
         self._tag.setStyleSheet(
-            "color: #f59e0b; font-size: 10px; font-weight: 700; letter-spacing: 1px;"
+            "color: #f59e0b; font-size: 12px; font-weight: 700; letter-spacing: 1px;"
         )
         remaining = max(0, self._lm.get_remaining_days())
         used = TRIAL_DAYS - remaining
@@ -272,12 +272,12 @@ class SidebarLicenseBanner(QWidget):
         self._progress.setVisible(True)
         self._progress.setValue(used)
         self._btn.setVisible(False)
-        self.setFixedHeight(90)
+        self.setFixedHeight(100)
 
     def _show_activated(self):
         self._tag.setText("PRO TRIAL")
         self._tag.setStyleSheet(
-            "color: #4ade80; font-size: 10px; font-weight: 700; letter-spacing: 1px;"
+            "color: #4ade80; font-size: 12px; font-weight: 700; letter-spacing: 1px;"
         )
         usage = self._lm.get_license_usage()
         if usage:
@@ -289,34 +289,34 @@ class SidebarLicenseBanner(QWidget):
             self._status.setText(self._lm.get_status_text())
             self._progress.setVisible(False)
         self._btn.setVisible(False)
-        self.setFixedHeight(80)
+        self.setFixedHeight(90)
 
     def _show_expired(self):
         self._tag.setText("已过期")
         self._tag.setStyleSheet(
-            "color: #f43f5e; font-size: 10px; font-weight: 700; letter-spacing: 1px;"
+            "color: #f43f5e; font-size: 12px; font-weight: 700; letter-spacing: 1px;"
         )
         self._status.setText(self._lm.get_status_text())
         self._progress.setVisible(False)
         self._btn.setVisible(True)
-        self.setFixedHeight(90)
+        self.setFixedHeight(100)
 
     def _show_offline(self):
         self._tag.setText("离线")
         self._tag.setStyleSheet(
-            "color: #f59e0b; font-size: 10px; font-weight: 700; letter-spacing: 1px;"
+            "color: #f59e0b; font-size: 12px; font-weight: 700; letter-spacing: 1px;"
         )
         self._status.setText("请连接网络验证")
         self._progress.setVisible(False)
         self._btn.setVisible(False)
-        self.setFixedHeight(60)
+        self.setFixedHeight(70)
 
     def _show_locked(self):
         self._tag.setText("未激活")
         self._tag.setStyleSheet(
-            "color: #f43f5e; font-size: 10px; font-weight: 700; letter-spacing: 1px;"
+            "color: #f43f5e; font-size: 12px; font-weight: 700; letter-spacing: 1px;"
         )
         self._status.setText("软件已锁定")
         self._progress.setVisible(False)
         self._btn.setVisible(True)
-        self.setFixedHeight(90)
+        self.setFixedHeight(100)
