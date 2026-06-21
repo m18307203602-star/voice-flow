@@ -101,6 +101,7 @@ class HistoryPanel(QWidget):
     """历史记录面板：左侧列表 + 右侧详情"""
 
     entry_selected = Signal(int)  # entry_id
+    entry_clicked = Signal(int)   # entry_id — 首页最近记录点击跳转
     _analysis_ready = Signal(str)  # 分析完成信号（后台线程 → 主线程）
 
     def __init__(self, history_db, config=None):
@@ -288,6 +289,19 @@ class HistoryPanel(QWidget):
             item.setData(Qt.UserRole, entry.id)
             self._list.addItem(item)
         self._list.scrollToTop()
+
+    def jump_to_item(self, entry_id: int):
+        """从首页跳转到指定记录并高亮选中"""
+        # 先刷新确保数据最新
+        self.refresh()
+        # 在列表中查找对应 entry_id
+        for i in range(self._list.count()):
+            item = self._list.item(i)
+            if item.data(Qt.UserRole) == entry_id:
+                self._list.setCurrentRow(i)
+                self._list.scrollToItem(item)
+                self._on_select(i)
+                return
 
     def _toggle_sort(self):
         """切换排序方向"""
