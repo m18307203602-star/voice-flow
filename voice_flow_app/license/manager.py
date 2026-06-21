@@ -95,6 +95,8 @@ class LicenseManager:
             {"used": int, "total": int} 或 None（无法计算时）
             - TRIAL_ACTIVE: used = 已使用天数, total = 7
             - ACTIVATED: used = 激活后已过天数, total = 许可证总天数
+
+        激活时间优先级: _activated_at > payload.i(签发时间) > _last_validation
         """
         if self._state == LicenseState.TRIAL_ACTIVE:
             return {
@@ -102,7 +104,15 @@ class LicenseManager:
                 "total": TRIAL_DAYS,
             }
         elif self._state == LicenseState.ACTIVATED:
-            at = self._activated_at or self._last_validation
+            # 激活时间：优先用本地记录，其次 payload 签发时间，最后才用验证时间
+            at = self._activated_at
+            if not at and self._decoded_payload:
+                # 试用转正式场景：_activated_at 可能为 null，用 payload 签发时间
+                issued = self._decoded_payload.get("i")
+                if issued:
+                    at = float(issued)
+            if not at:
+                at = self._last_validation
             if not at or not self._decoded_payload:
                 return None
             exp_str = self._decoded_payload.get("e", "")
@@ -207,6 +217,9 @@ class LicenseManager:
                 if verified:
                     self._license_payload = result["renewed_payload"]
                     self._decoded_payload = verified
+            # 补设激活时间（试用转正式时 _activated_at 可能为 null）
+            if not self._activated_at:
+                self._activated_at = time.time()
             self._save_license_file()
             if self._state != LicenseState.PERMANENT:
                 self._state = LicenseState.ACTIVATED
