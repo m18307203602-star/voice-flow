@@ -113,8 +113,8 @@ class LicenseManager:
                 now = datetime.now(timezone.utc)
                 activated = datetime.fromtimestamp(at, tz=timezone.utc)
                 expires = datetime.fromisoformat(exp_str)
-                used = max(0, (now - activated).days)
-                total = max(used, (expires - activated).days)
+                used = max(0, round((now - activated).total_seconds() / 86400))
+                total = max(used, round((expires - activated).total_seconds() / 86400))
                 return {"used": used, "total": total}
             except Exception:
                 return None
@@ -263,7 +263,7 @@ class LicenseManager:
                 self._state = LicenseState.TRIAL_EXPIRED
                 self._remaining_days = 0
                 return
-            remaining = (expires - datetime.now(timezone.utc)).days
+            remaining = round((expires - datetime.now(timezone.utc)).total_seconds() / 86400)
             self._remaining_days = max(0, remaining)
             self._state = LicenseState.TRIAL_ACTIVE
         except Exception:
