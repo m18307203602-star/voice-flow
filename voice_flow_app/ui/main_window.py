@@ -348,21 +348,21 @@ class MainWindow(QMainWindow):
         self._stack = QStackedWidget()
         self._root.addWidget(self._stack, 1)
 
-        # ── Page 0: 首页 ──
+        # ── Page 0: 首页（统计页） ──
+        self._stats_page = StatsPage(self._history_db)
+        self._stack.addWidget(self._stats_page)
+
+        # ── Page 1: 控制台（原首页） ──
         self._home_page = self._create_home_page()
         self._stack.addWidget(self._home_page)
 
-        # ── Page 1: 历史记录 ──
+        # ── Page 2: 历史记录 ──
         self._history_panel = HistoryPanel(self._history_db, self._config)
         self._stack.addWidget(self._history_panel)
 
-        # ── Page 2: 词典 ──
+        # ── Page 3: 词典 ──
         self._dict_widget = DictionaryWidget(self._dictionary)
         self._stack.addWidget(self._dict_widget)
-
-        # ── Page 3: 统计 ──
-        self._stats_page = StatsPage(self._history_db)
-        self._stack.addWidget(self._stats_page)
 
     def _create_home_page(self):
         """创建首页内容（所有现有控件 + 最近记录预览）"""
