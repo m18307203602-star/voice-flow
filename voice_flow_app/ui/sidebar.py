@@ -50,10 +50,10 @@ class SidebarWidget(QWidget):
     current_changed = Signal(int)  # 选中的 page index
 
     NAV_ITEMS = [
-        ("🏠  首页", "home"),
+        ("⚙  控制台", "home"),
         ("📋  历史记录", "history"),
         ("📖  词典", "dictionary"),
-        ("📊  统计", "stats"),
+        ("🏠  首页", "stats"),
     ]
 
     def __init__(self, license_manager=None, parent=None):
