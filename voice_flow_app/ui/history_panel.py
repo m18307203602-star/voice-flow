@@ -221,30 +221,24 @@ class _CorrectionDialog(QDialog):
         diff_frame.setMaximumHeight(140)
         layout.addWidget(diff_frame)
 
-        self._diff_empty = QLabel("  编辑输出结果后点击「检测差异」")
+        self._diff_empty = QLabel("  修改文本后将自动检测差异词条")
         self._diff_empty.setStyleSheet("color: #555570; font-size: 12px;")
         self._diff_container.addWidget(self._diff_empty)
 
-        # ── 按钮行 1：检测差异 ──
-        detect_row = QHBoxLayout()
-        detect_btn = QPushButton("🔍 检测差异")
-        detect_btn.clicked.connect(self._detect_diffs)
-        detect_row.addWidget(detect_btn)
-        detect_row.addStretch()
-        layout.addLayout(detect_row)
-
-        # ── 按钮行 2：保存/取消 ──
+        # ── 按钮行：保存/取消 ──
         btn_row = QHBoxLayout()
-        self._add_all_btn = QPushButton("📥 全部加入词典")
-        self._add_all_btn.setObjectName("addAllBtn")
-        self._add_all_btn.clicked.connect(self._add_all_to_dict)
-        self._add_all_btn.setVisible(False)
-        btn_row.addWidget(self._add_all_btn)
+
+        self._auto_add_btn = QPushButton("💾 保存并加入词典")
+        self._auto_add_btn.setObjectName("addAllBtn")
+        self._auto_add_btn.setToolTip("自动检测差异 → 加入词典 → 保存修改")
+        self._auto_add_btn.clicked.connect(self._save_and_add_all)
+        btn_row.addWidget(self._auto_add_btn)
 
         btn_row.addStretch()
 
-        self._save_btn = QPushButton("💾 仅保存修改")
+        self._save_btn = QPushButton("仅保存修改")
         self._save_btn.setObjectName("saveBtn")
+        self._save_btn.setToolTip("仅保存文本修改，不加入词典")
         self._save_btn.clicked.connect(self._save_only)
         btn_row.addWidget(self._save_btn)
 
@@ -253,6 +247,19 @@ class _CorrectionDialog(QDialog):
         btn_row.addWidget(cancel_btn)
 
         layout.addLayout(btn_row)
+
+        # 监听文本变化 → 自动检测差异
+        self._result_edit.textChanged.connect(self._on_text_changed)
+
+    def _on_text_changed(self):
+        """文本变化时自动重新检测差异（延迟 300ms 防抖）"""
+        if hasattr(self, '_detect_timer'):
+            self._detect_timer.stop()
+        from PySide6.QtCore import QTimer
+        self._detect_timer = QTimer(self)
+        self._detect_timer.setSingleShot(True)
+        self._detect_timer.timeout.connect(self._detect_diffs)
+        self._detect_timer.start(300)  # 300ms 防抖
 
     def _detect_diffs(self):
         """对比原始结果和当前编辑文本，检测差异"""
@@ -352,9 +359,9 @@ class _CorrectionDialog(QDialog):
             self._diff_empty = QLabel("  未检测到需要纠错的修改（修改太小或太大）")
             self._diff_empty.setStyleSheet("color: #555570; font-size: 12px;")
             self._diff_container.addWidget(self._diff_empty)
-            self._add_all_btn.setVisible(False)
+            self._auto_add_btn.setVisible(False)
         else:
-            self._add_all_btn.setVisible(True)
+            self._auto_add_btn.setVisible(True)
 
     def _clear_diffs(self):
         """清除差异显示区域"""
@@ -409,6 +416,14 @@ class _CorrectionDialog(QDialog):
             )
         else:
             QMessageBox.warning(self, "提示", "没有有效的词条可添加。")
+
+    def _save_and_add_all(self):
+        """自动检测差异 → 全部加入词典 → 保存修改并关闭"""
+        self._detect_diffs()  # 确保差异是最新的
+        self._add_all_to_dict()  # 全部加入词典
+        new_text = self._result_edit.toPlainText()
+        self._edited_text = new_text
+        self.accept()
 
     def _save_only(self):
         """仅保存修改后的文本（不加入词典）"""
