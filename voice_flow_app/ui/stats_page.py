@@ -1,6 +1,6 @@
 """统计页面 — 指标卡片 + 扇形图 + 柱状图"""
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QRect
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QPainterPath
 import math
 
@@ -46,42 +46,92 @@ class _PieChart(QWidget):
 
         if not self._data or sum(self._data.values()) == 0:
             painter.setPen(QColor("#8888a8"))
+            painter.setFont(QFont("Microsoft YaHei", 12))
             painter.drawText(rect, Qt.AlignCenter, "暂无数据")
             return
 
         total = sum(self._data.values())
-        # 扇形图放在左上区域
-        size = min(rect.width(), rect.height()) - 20
-        pie_rect = rect.adjusted(0, 0, -(rect.width() - size), -(rect.height() - size))
-        center = pie_rect.center()
-        radius = size // 2
 
-        start_angle = 90 * 16  # Qt 用 1/16 度
-        labels = list(self._data.keys())
-        values = list(self._data.values())
+        # ── 布局：左边饼图，右边图例 ──
+        # 饼图占左侧 55%，图例占右侧 45%
+        pie_w = int((rect.width() - 10) * 0.55)
+        side = min(pie_w, rect.height())
+        pie_left = rect.left()
+        pie_top = rect.top() + (rect.height() - side) // 2
+        pie_rect = QRect(pie_left, pie_top, side, side)
+        base_center = pie_rect.center()
+        base_radius = side // 2
 
-        for i, (label, val) in enumerate(zip(labels, values)):
+        # ── 按值降序排列（大扇区在视觉底层） ──
+        items = sorted(self._data.items(), key=lambda x: -x[1])
+        labels = [it[0] for it in items]
+        values = [it[1] for it in items]
+
+        # ── 绘制爆炸扇形（占比越大外推越远） ──
+        max_explode = int(base_radius * 0.15)  # 最大外推 = 半径的 15%
+        start_angle = 90 * 16  # Qt: 1/16 度，从 12 点方向开始
+        colors_used = []
+
+        painter.setPen(Qt.NoPen)
+        for label, val in zip(labels, values):
             span = int(360 * 16 * val / total)
+            share = val / total if total > 0 else 0
+            explode = int(max_explode * share)
+
             color = self.COLORS.get(label.split("(")[0].strip(), self._FALLBACK)
+            colors_used.append(color)
+
+            # 计算外推方向（扇区中心角）
+            mid_angle_deg = (start_angle + span / 2) / 16
+            mid_angle_rad = math.radians(mid_angle_deg)
+            cx = base_center.x() + int(explode * math.cos(mid_angle_rad))
+            cy = base_center.y() - int(explode * math.sin(mid_angle_rad))
+
+            offset_rect = QRect(
+                cx - base_radius, cy - base_radius,
+                base_radius * 2, base_radius * 2,
+            )
+
             painter.setBrush(QBrush(color))
-            painter.setPen(Qt.NoPen)
-            painter.drawPie(pie_rect, start_angle, span)
+            painter.drawPie(offset_rect, start_angle, span)
+
             start_angle += span
 
-        # 图例在右侧
+        # ── 右侧图例（竖向排列，每行：色块 + 名称 + 占比 + 次数） ──
         legend_x = pie_rect.right() + 16
-        y = pie_rect.top() + 8
+        legend_y = pie_rect.top() + 4
+        line_h = 26
         painter.setFont(QFont("Microsoft YaHei", 10))
-        for i, (label, val) in enumerate(zip(labels, values)):
+
+        for label, val, color in zip(labels, values, colors_used):
             pct = val / total * 100 if total > 0 else 0
-            color = self.COLORS.get(label.split("(")[0].strip(), self._FALLBACK)
+
+            # 色块
             painter.setBrush(QBrush(color))
             painter.setPen(Qt.NoPen)
-            painter.drawRect(legend_x, y, 12, 12)
-            painter.setPen(QColor("#cdd6f4"))
-            short_label = label[:8] if len(label) > 8 else label
-            painter.drawText(legend_x + 18, y + 12, f"{short_label} {pct:.0f}%")
-            y += 24
+            painter.drawRoundedRect(legend_x, legend_y, 14, 14, 3, 3)
+
+            # 名称
+            painter.setPen(QColor("#e4e4f0"))
+            painter.drawText(legend_x + 20, legend_y + 12, label)
+
+            # 百分比
+            painter.setPen(QColor("#8888a8"))
+            pct_text = f"{pct:.1f}%"
+            painter.drawText(legend_x + 20, legend_y + 26, f"占比 {pct_text}  |  调用 {int(val)} 次")
+
+            # 细进度条（视觉化占比）
+            bar_x = legend_x + 20
+            bar_y = legend_y + 30
+            bar_w = 100
+            bar_h = 3
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor("#2a2a3e"))
+            painter.drawRoundedRect(bar_x, bar_y, bar_w, bar_h, 1, 1)
+            painter.setBrush(QBrush(color))
+            painter.drawRoundedRect(bar_x, bar_y, int(bar_w * pct / 100), bar_h, 1, 1)
+
+            legend_y += line_h + 22  # 行高 + 进度条空间
 
 
 class _BarChart(QWidget):
