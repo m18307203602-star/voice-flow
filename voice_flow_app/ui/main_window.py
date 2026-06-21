@@ -89,7 +89,7 @@ QRadioButton, QCheckBox {
     font-size: 13px;
     spacing: 8px;
 }
-QRadioButton::indicator, QCheckBox::indicator {
+QRadioButton::indicator {
     width: 18px;
     height: 18px;
     border-radius: 4px;
