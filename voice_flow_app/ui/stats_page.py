@@ -1,7 +1,7 @@
 """统计页面 — 指标卡片 + 扇形图 + 柱状图"""
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame
 from PySide6.QtCore import Qt, QRect
-from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QPainterPath
+from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QPainterPath, QLinearGradient
 import math
 
 
@@ -149,41 +149,107 @@ class _BarChart(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
-        rect = self.rect().adjusted(20, 30, -20, -30)
+
+        # ── 留出左侧 Y 轴标注空间 ──
+        left_margin = 34
+        top_margin = 8
+        bottom_margin = 28
+        right_margin = 12
+        rect = self.rect().adjusted(left_margin, top_margin, -right_margin, -bottom_margin)
 
         if not self._data:
             painter.setPen(QColor("#8888a8"))
-            painter.drawText(rect, Qt.AlignCenter, "暂无数据")
+            painter.setFont(QFont("Microsoft YaHei", 12))
+            painter.drawText(self.rect(), Qt.AlignCenter, "暂无数据")
             return
 
         max_count = max((d.get("count", 0) for d in self._data), default=1)
-        bar_w = max(24, (rect.width() - 20) // len(self._data) - 8)
-        spacing = (rect.width() - bar_w * len(self._data)) // (len(self._data) + 1)
+        # Y 轴刻度范围：至少显示 5，且向上取整
+        y_max = max(5, int(max_count * 1.2))
+        y_step = max(1, y_max // 4)
 
-        bottom = rect.bottom()
+        chart_left = rect.left()
+        chart_right = rect.right()
+        chart_top = rect.top()
+        chart_bottom = rect.bottom()
+        chart_h = chart_bottom - chart_top
 
+        # ── Y 轴刻度 + 水平网格线 ──
+        painter.setFont(QFont("Microsoft YaHei", 8))
+        for tick_val in range(0, y_max + y_step, y_step):
+            if tick_val > y_max:
+                continue
+            y_frac = tick_val / y_max if y_max > 0 else 0
+            y = chart_bottom - int(y_frac * chart_h)
+
+            # 网格线
+            painter.setPen(QPen(QColor("#1e1e30"), 1))
+            painter.drawLine(chart_left, y, chart_right, y)
+
+            # Y 轴标签
+            painter.setPen(QColor("#666680"))
+            painter.drawText(0, y - 8, left_margin - 6, 16,
+                           Qt.AlignRight | Qt.AlignVCenter, str(tick_val))
+
+        # ── 柱子和日期 ──
+        n = len(self._data)
+        bar_w = min(28, (chart_right - chart_left) // n - 10)
+        spacing = ((chart_right - chart_left) - bar_w * n) // (n + 1)
+
+        painter.setPen(Qt.NoPen)
         for i, d in enumerate(self._data):
             count = d.get("count", 0)
-            bar_h = int((count / max_count) * rect.height() * 0.9) if max_count > 0 else 0
+            bar_h = int((count / y_max) * chart_h) if y_max > 0 else 0
 
-            x = rect.left() + spacing + i * (bar_w + spacing)
+            x = chart_left + spacing + i * (bar_w + spacing)
 
-            # 紫色柱子
-            painter.setBrush(QBrush(QColor("#7c5cfc")))
-            painter.setPen(Qt.NoPen)
-            painter.drawRoundedRect(x, bottom - bar_h, bar_w, bar_h, 4, 4)
+            # 柱子（紫色渐变感：亮紫 → 暗紫）
+            grad = QLinearGradient(x, chart_bottom - bar_h, x, chart_bottom)
+            grad.setColorAt(0, QColor("#9170ff"))
+            grad.setColorAt(1, QColor("#5a3fc0"))
+            painter.setBrush(QBrush(grad))
+            painter.drawRoundedRect(x, chart_bottom - bar_h, bar_w, bar_h, 4, 4)
 
-            # 数值
+            # 数值（柱子顶上）
             painter.setPen(QColor("#cdd6f4"))
-            painter.setFont(QFont("Microsoft YaHei", 9))
-            painter.drawText(x - 4, bottom - bar_h - 6, bar_w + 8, 16,
+            painter.setFont(QFont("Microsoft YaHei", 9, QFont.Bold))
+            painter.drawText(x - 4, chart_bottom - bar_h - 20, bar_w + 8, 16,
                            Qt.AlignCenter, str(count))
 
-            # 日期
-            date_label = d.get("date", "")[-5:]  # "06-15"
+            # 时长（柱子顶上第二行，浅色小字）
+            dur = d.get("duration", 0)
+            dur_text = f"{int(dur)}s" if dur < 60 else f"{dur/60:.0f}min"
+            painter.setPen(QColor("#777790"))
+            painter.setFont(QFont("Microsoft YaHei", 8))
+            painter.drawText(x - 4, chart_bottom - bar_h - 6, bar_w + 8, 12,
+                           Qt.AlignCenter, dur_text)
+
+            # 日期标签
+            date_label = d.get("date", "")
+            # 兼容 "2026-06-15" 和 "06-15" 两种格式
+            if len(date_label) >= 10:
+                date_label = date_label[5:]  # "06-15"
+            elif len(date_label) >= 5:
+                date_label = date_label[-5:]
             painter.setPen(QColor("#8888a8"))
-            painter.drawText(x - 4, bottom + 16, bar_w + 8, 16,
+            painter.setFont(QFont("Microsoft YaHei", 9))
+            painter.drawText(x - 4, chart_bottom + 8, bar_w + 8, 16,
                            Qt.AlignCenter, date_label)
+
+        # ── 底部标注：横轴含义 ──
+        painter.setPen(QColor("#555570"))
+        painter.setFont(QFont("Microsoft YaHei", 10))
+        painter.drawText(rect.left(), self.rect().bottom() - 4,
+                        rect.width(), 16, Qt.AlignCenter, "日期")
+
+        # ── 左侧标注：纵轴含义 ──
+        painter.save()
+        painter.translate(8, rect.center().y())
+        painter.rotate(-90)
+        painter.setPen(QColor("#555570"))
+        painter.setFont(QFont("Microsoft YaHei", 10))
+        painter.drawText(-40, -4, "录音次数")
+        painter.restore()
 
 
 class _StatCard(QFrame):
