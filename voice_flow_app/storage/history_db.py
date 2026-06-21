@@ -391,6 +391,11 @@ class HistoryDB:
         Returns:
             {"total_duration": float, "total_count": int, "total_chars": int,
              "engines": {name: {"calls": int, "duration": float}}}
+
+        引擎计数策略：
+          - 优先用 stt_engine（新记录，精确到具体模式）
+          - stt_engine 为空时回退解析 engines JSON 数组（旧记录）
+          - 引擎名统一映射：tencent→腾讯(流式), tencent_sentence→腾讯(短连), 等
         """
         row = self._conn.execute(
             "SELECT COALESCE(SUM(duration), 0) as dur, COUNT(*) as cnt, "
@@ -398,18 +403,43 @@ class HistoryDB:
             "FROM recordings WHERE status = 'success'"
         ).fetchone()
 
-        eng_rows = self._conn.execute(
-            "SELECT stt_engine, COUNT(*) as cnt, COALESCE(SUM(duration), 0) as dur "
-            "FROM recordings WHERE status = 'success' AND stt_engine != '' "
-            "GROUP BY stt_engine"
+        # 取所有成功记录的 stt_engine + engines（用于兼容旧数据）
+        all_rows = self._conn.execute(
+            "SELECT stt_engine, engines, duration FROM recordings WHERE status = 'success'"
         ).fetchall()
 
-        engines = {}
-        for r in eng_rows:
-            engines[r["stt_engine"] or "unknown"] = {
-                "calls": r["cnt"],
-                "duration": round(r["dur"] or 0, 1),
-            }
+        engines: dict[str, dict] = {}
+        for r in all_rows:
+            dur = r["duration"] or 0
+            # 新数据：直接用 stt_engine
+            if r["stt_engine"]:
+                eng = r["stt_engine"]
+                if eng not in engines:
+                    engines[eng] = {"calls": 0, "duration": 0.0}
+                engines[eng]["calls"] += 1
+                engines[eng]["duration"] += dur
+                continue
+
+            # 旧数据（stt_engine 为空）：从 engines JSON 数组拆开计数
+            try:
+                eng_list = __import__('json').loads(r["engines"])
+            except Exception:
+                continue
+            if not isinstance(eng_list, list):
+                continue
+            for eng in eng_list:
+                if not eng or not isinstance(eng, str):
+                    continue
+                # 归一化引擎名：旧名 "tencent" → 新架构下统一用原名
+                if eng not in engines:
+                    engines[eng] = {"calls": 0, "duration": 0.0}
+                engines[eng]["calls"] += 1
+                # 时长按引擎数均分（多引擎并行，避免重复计算总时长）
+                engines[eng]["duration"] += dur / len(eng_list)
+
+        # Round durations
+        for eng in engines:
+            engines[eng]["duration"] = round(engines[eng]["duration"], 1)
 
         return {
             "total_duration": round(row["dur"] or 0, 1),
