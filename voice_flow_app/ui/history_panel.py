@@ -168,11 +168,11 @@ class _CorrectionDialog(QDialog):
         super().__init__(parent)
         self._dict = dictionary
         self._original_result = result_text
-        self._diffs: list[tuple[str, str]] = []  # [(from_text, to_text), ...]
+        self._diff_widgets: list[dict] = []  # [{"from": QLineEdit, "to": QLineEdit}, ...]
 
         self.setWindowTitle("纠错编辑")
-        self.setMinimumSize(600, 520)
-        self.resize(650, 580)
+        self.setMinimumSize(640, 540)
+        self.resize(680, 600)
         self.setStyleSheet(self.STYLE)
 
         layout = QVBoxLayout(self)
@@ -271,7 +271,7 @@ class _CorrectionDialog(QDialog):
         ops = matcher.get_opcodes()
 
         self._clear_diffs()
-        self._diffs = []
+        self._diff_widgets = []
 
         diff_count = 0
         for tag, i1, i2, j1, j2 in ops:
@@ -287,24 +287,48 @@ class _CorrectionDialog(QDialog):
                 if from_text == to_text:
                     continue
 
-                # 只关注 2-20 字的修改（太短无意义，太长是整段重写）
+                # 只关注 2-30 字的修改（太短无意义，太长是整段重写）
                 if len(from_text) < 2 and len(to_text) < 2:
                     continue
                 if len(from_text) > 30 or len(to_text) > 30:
                     continue
 
                 diff_count += 1
-                self._diffs.append((from_text, to_text))
 
-                # 添加差异行
+                # ── 构建可编辑差异行：原文输入框 → 修正输入框 ──
                 diff_row = QHBoxLayout()
-                diff_row.setSpacing(8)
+                diff_row.setSpacing(6)
 
-                from_lbl = QLabel(f"「{from_text or '(空)'}」 → 「{to_text or '(空)'}」")
-                from_lbl.setStyleSheet("color: #f59e0b; font-size: 12px;")
-                diff_row.addWidget(from_lbl)
-                diff_row.addStretch()
+                # 原文输入框（红色调）
+                from_edit = QLineEdit(from_text)
+                from_edit.setStyleSheet(
+                    "QLineEdit { background-color: #2a1a1e; color: #f43f5e;"
+                    "border: 1px solid #5a2a30; border-radius: 4px;"
+                    "padding: 4px 8px; font-size: 12px; }"
+                    "QLineEdit:focus { border-color: #f43f5e; }"
+                )
+                from_edit.setToolTip("原文（可编辑调整）")
+                diff_row.addWidget(from_edit, 2)
 
+                # 箭头
+                arrow = QLabel("→")
+                arrow.setStyleSheet("color: #f59e0b; font-size: 14px; font-weight: bold;")
+                arrow.setFixedWidth(20)
+                arrow.setAlignment(Qt.AlignCenter)
+                diff_row.addWidget(arrow)
+
+                # 修正输入框（绿色调）
+                to_edit = QLineEdit(to_text)
+                to_edit.setStyleSheet(
+                    "QLineEdit { background-color: #1a2a1e; color: #4ade80;"
+                    "border: 1px solid #2a5a30; border-radius: 4px;"
+                    "padding: 4px 8px; font-size: 12px; }"
+                    "QLineEdit:focus { border-color: #4ade80; }"
+                )
+                to_edit.setToolTip("修正为（可编辑调整）")
+                diff_row.addWidget(to_edit, 2)
+
+                # 加入词典按钮
                 add_btn = QPushButton("加入词典")
                 add_btn.setObjectName("addToDictBtn")
                 add_btn.setFixedWidth(80)
@@ -317,6 +341,12 @@ class _CorrectionDialog(QDialog):
                 diff_widget = QWidget()
                 diff_widget.setLayout(diff_row)
                 self._diff_container.addWidget(diff_widget)
+
+                self._diff_widgets.append({
+                    "from_edit": from_edit,
+                    "to_edit": to_edit,
+                    "add_btn": add_btn,
+                })
 
         if diff_count == 0:
             self._diff_empty = QLabel("  未检测到需要纠错的修改（修改太小或太大）")
@@ -334,32 +364,51 @@ class _CorrectionDialog(QDialog):
                 item.widget().deleteLater()
 
     def _add_single_to_dict(self, index: int):
-        """将单个差异加入词典"""
-        if 0 <= index < len(self._diffs):
-            from_text, to_text = self._diffs[index]
+        """将单个差异加入词典（从可编辑输入框读取当前值）"""
+        if 0 <= index < len(self._diff_widgets):
+            w = self._diff_widgets[index]
+            from_text = w["from_edit"].text().strip()
+            to_text = w["to_edit"].text().strip()
+            if not from_text or not to_text:
+                QMessageBox.warning(self, "提示", "原文和修正词不能为空。")
+                return
             self._dict.add_correction(from_text, to_text)
-            self._dict.add(from_text, to_text)  # 同时加入正式词典
-            # 标记已添加
-            self._diffs[index] = (from_text, to_text)  # 保持不变
-            QMessageBox.information(
-                self, "已添加",
-                f"「{from_text}」→「{to_text}」已加入词典和纠错记录。"
+            self._dict.add(from_text, to_text)
+            # 视觉反馈：按钮变灰
+            w["add_btn"].setEnabled(False)
+            w["add_btn"].setText("已添加")
+            w["add_btn"].setStyleSheet(
+                "background-color: #333350; color: #555570; border: none;"
+                "border-radius: 6px; padding: 6px 14px; font-size: 12px;"
             )
+            w["from_edit"].setReadOnly(True)
+            w["to_edit"].setReadOnly(True)
 
     def _add_all_to_dict(self):
-        """将所有检测到的差异加入词典"""
-        if not self._diffs:
+        """将所有检测到的差异加入词典（从可编辑输入框读取当前值）"""
+        if not self._diff_widgets:
             return
         count = 0
-        for from_text, to_text in self._diffs:
+        for w in self._diff_widgets:
+            from_text = w["from_edit"].text().strip()
+            to_text = w["to_edit"].text().strip()
             if from_text and to_text:
                 self._dict.add_correction(from_text, to_text)
                 self._dict.add(from_text, to_text)
+                w["add_btn"].setEnabled(False)
+                w["add_btn"].setText("已添加")
+                w["add_btn"].setStyleSheet(
+                    "background-color: #333350; color: #555570; border: none;"
+                    "border-radius: 6px; padding: 6px 14px; font-size: 12px;"
+                )
                 count += 1
-        QMessageBox.information(
-            self, "已添加",
-            f"已将 {count} 条修改加入词典和纠错记录。"
-        )
+        if count > 0:
+            QMessageBox.information(
+                self, "已添加",
+                f"已将 {count} 条修改加入词典和纠错记录。"
+            )
+        else:
+            QMessageBox.warning(self, "提示", "没有有效的词条可添加。")
 
     def _save_only(self):
         """仅保存修改后的文本（不加入词典）"""
