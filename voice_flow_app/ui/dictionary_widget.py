@@ -62,7 +62,20 @@ QPushButton#promoteBtn { background-color: #4ade80; color: #0d0d14; border: none
 QPushButton#promoteBtn:hover { background-color: #6ee7a0; }
 QPushButton#adoptBtn { background-color: #4ade80; color: #0d0d14; border: none; font-weight: 600; }
 QPushButton#adoptBtn:hover { background-color: #6ee7a0; }
-QCheckBox { color: #8888a8; font-size: 12px; }
+QCheckBox { color: #cdd6f4; font-size: 13px; spacing: 8px; }
+QCheckBox::indicator {
+    width: 18px; height: 18px;
+    border: 2px solid #3a3a58;
+    border-radius: 4px;
+    background-color: #1c1c2e;
+}
+QCheckBox::indicator:checked {
+    background-color: #7c5cfc;
+    border-color: #7c5cfc;
+}
+QCheckBox::indicator:hover {
+    border-color: #7c5cfc;
+}
 QLabel#tabHint { color: #8888a8; font-size: 11px; }
 QLabel#emptyLabel { color: #555570; font-size: 14px; }
 QLabel#suggestionCount { color: #cdd6f4; font-size: 13px; }
