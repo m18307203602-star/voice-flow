@@ -385,5 +385,57 @@ class HistoryDB:
             })
         return results
 
+    def get_stats_all_time(self) -> dict:
+        """全时段统计数据：总时长、总次数、总字数、STT引擎分布
+
+        Returns:
+            {"total_duration": float, "total_count": int, "total_chars": int,
+             "engines": {name: {"calls": int, "duration": float}}}
+        """
+        row = self._conn.execute(
+            "SELECT COALESCE(SUM(duration), 0) as dur, COUNT(*) as cnt, "
+            "COALESCE(SUM(LENGTH(result)), 0) as chars "
+            "FROM recordings WHERE status = 'success'"
+        ).fetchone()
+
+        eng_rows = self._conn.execute(
+            "SELECT stt_engine, COUNT(*) as cnt, COALESCE(SUM(duration), 0) as dur "
+            "FROM recordings WHERE status = 'success' AND stt_engine != '' "
+            "GROUP BY stt_engine"
+        ).fetchall()
+
+        engines = {}
+        for r in eng_rows:
+            engines[r["stt_engine"] or "unknown"] = {
+                "calls": r["cnt"],
+                "duration": round(r["dur"] or 0, 1),
+            }
+
+        return {
+            "total_duration": round(row["dur"] or 0, 1),
+            "total_count": row["cnt"] or 0,
+            "total_chars": row["chars"] or 0,
+            "engines": engines,
+        }
+
+    def get_daily_stats(self, days: int = 7) -> list[dict]:
+        """最近 N 天每日统计：日期、次数、时长
+
+        Returns:
+            [{"date": "2026-06-21", "count": 5, "duration": 120.5}, ...]
+        """
+        rows = self._conn.execute(
+            "SELECT date(created_at) as d, COUNT(*) as cnt, "
+            "COALESCE(SUM(duration), 0) as dur "
+            "FROM recordings WHERE status = 'success' "
+            "AND created_at >= datetime('now', 'localtime', ?) "
+            "GROUP BY d ORDER BY d ASC",
+            (f"-{days} days",),
+        ).fetchall()
+        return [
+            {"date": r["d"], "count": r["cnt"], "duration": round(r["dur"] or 0, 1)}
+            for r in rows
+        ]
+
     def close(self):
         self._conn.close()
