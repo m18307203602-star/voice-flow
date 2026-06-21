@@ -167,12 +167,12 @@ QLabel#sbStatus {
     font-size: 12px;
 }
 QProgressBar#sbProgress {
-    background-color: #1a1a2e;
-    border: none;
-    border-radius: 2px;
-    height: 5px;
-    max-height: 5px;
-    min-height: 5px;
+    background-color: #2a2a3e;
+    border: 1px solid #3a3a50;
+    border-radius: 3px;
+    height: 6px;
+    max-height: 6px;
+    min-height: 6px;
 }
 QProgressBar#sbProgress::chunk {
     background-color: #7c5cfc;
@@ -247,6 +247,13 @@ class SidebarLicenseBanner(QWidget):
 
         self.refresh()
 
+    def _set_progress(self, total: int, used: int):
+        """设置进度条，确保即使比例极小也有最小可见宽度（~3%）"""
+        self._progress.setRange(0, total)
+        # 至少显示 total 的 3%，避免 2/364 完全不可见
+        min_visible = max(1, int(total * 0.03))
+        self._progress.setValue(max(used, min_visible))
+
     def refresh(self):
         state = self._lm.get_state()
 
@@ -270,7 +277,7 @@ class SidebarLicenseBanner(QWidget):
         used = TRIAL_DAYS - remaining
         self._status.setText(f"已使用 {used} 天 / 共 {TRIAL_DAYS} 天")
         self._progress.setVisible(True)
-        self._progress.setValue(used)
+        self._set_progress(TRIAL_DAYS, used)
         self._btn.setVisible(False)
         self.setFixedHeight(100)
 
@@ -283,8 +290,7 @@ class SidebarLicenseBanner(QWidget):
         if usage:
             self._status.setText(f"已使用 {usage['used']} 天 / 共 {usage['total']} 天")
             self._progress.setVisible(True)
-            self._progress.setRange(0, usage["total"])
-            self._progress.setValue(usage["used"])
+            self._set_progress(usage["total"], usage["used"])
         else:
             self._status.setText(self._lm.get_status_text())
             self._progress.setVisible(False)
