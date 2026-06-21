@@ -17,10 +17,15 @@ class _PieChart(QWidget):
     """扇形图 — QPainter 手绘"""
 
     COLORS = {
+        # 英文 key（数据源）→ 颜色
         "tencent": QColor("#7c5cfc"),
         "tencent_sentence": QColor("#7c5cfc"),
         "aliyun": QColor("#f97316"),
         "iflytek": QColor("#22c55e"),
+        # 中文 key（折分后的显示名）→ 同一颜色
+        "腾讯": QColor("#7c5cfc"),
+        "阿里云": QColor("#f97316"),
+        "讯飞": QColor("#22c55e"),
     }
     _FALLBACK = QColor("#6b7280")
 
