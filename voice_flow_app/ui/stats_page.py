@@ -1,7 +1,7 @@
 """统计页面 — 指标卡片 + 扇形图 + 柱状图"""
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame
 from PySide6.QtCore import Qt, QRect
-from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QPainterPath, QLinearGradient
+from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QFontMetrics, QPainterPath, QLinearGradient
 import math
 
 
@@ -150,10 +150,10 @@ class _BarChart(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
 
-        # ── 留出左侧 Y 轴标注空间 ──
-        left_margin = 34
-        top_margin = 8
-        bottom_margin = 28
+        # ── 留出左侧 Y 轴标注空间 + 顶部柱上文字空间 ──
+        left_margin = 44    # 加大，给竖排标签足够空间
+        top_margin = 22     # 柱顶标注文字的空间
+        bottom_margin = 30
         right_margin = 12
         rect = self.rect().adjusted(left_margin, top_margin, -right_margin, -bottom_margin)
 
@@ -188,10 +188,10 @@ class _BarChart(QWidget):
 
             # Y 轴标签
             painter.setPen(QColor("#666680"))
-            painter.drawText(0, y - 8, left_margin - 6, 16,
+            painter.drawText(2, y - 8, left_margin - 8, 16,
                            Qt.AlignRight | Qt.AlignVCenter, str(tick_val))
 
-        # ── 柱子和日期 ──
+        # ── 柱子和数据 ──
         n = len(self._data)
         bar_w = min(28, (chart_right - chart_left) // n - 10)
         spacing = ((chart_right - chart_left) - bar_w * n) // (n + 1)
@@ -202,38 +202,39 @@ class _BarChart(QWidget):
             bar_h = int((count / y_max) * chart_h) if y_max > 0 else 0
 
             x = chart_left + spacing + i * (bar_w + spacing)
+            bar_top_y = chart_bottom - bar_h
 
-            # 柱子（紫色渐变感：亮紫 → 暗紫）
-            grad = QLinearGradient(x, chart_bottom - bar_h, x, chart_bottom)
+            # 柱子（渐变紫）
+            grad = QLinearGradient(x, bar_top_y, x, chart_bottom)
             grad.setColorAt(0, QColor("#9170ff"))
             grad.setColorAt(1, QColor("#5a3fc0"))
             painter.setBrush(QBrush(grad))
-            painter.drawRoundedRect(x, chart_bottom - bar_h, bar_w, bar_h, 4, 4)
+            painter.drawRoundedRect(x, bar_top_y, bar_w, bar_h, 4, 4)
 
-            # 数值（柱子顶上）
+            # ── 柱顶上方标注：次数（大字）+ 时长（小字） ──
+            # 次数 — 柱子上方留足够间距
             painter.setPen(QColor("#cdd6f4"))
             painter.setFont(QFont("Microsoft YaHei", 9, QFont.Bold))
-            painter.drawText(x - 4, chart_bottom - bar_h - 20, bar_w + 8, 16,
+            painter.drawText(x - 4, bar_top_y - 30, bar_w + 8, 16,
                            Qt.AlignCenter, str(count))
 
-            # 时长（柱子顶上第二行，浅色小字）
+            # 时长 — 次数下方，远离柱子色块
             dur = d.get("duration", 0)
             dur_text = f"{int(dur)}s" if dur < 60 else f"{dur/60:.0f}min"
             painter.setPen(QColor("#777790"))
             painter.setFont(QFont("Microsoft YaHei", 8))
-            painter.drawText(x - 4, chart_bottom - bar_h - 6, bar_w + 8, 12,
+            painter.drawText(x - 4, bar_top_y - 14, bar_w + 8, 12,
                            Qt.AlignCenter, dur_text)
 
             # 日期标签
             date_label = d.get("date", "")
-            # 兼容 "2026-06-15" 和 "06-15" 两种格式
             if len(date_label) >= 10:
                 date_label = date_label[5:]  # "06-15"
             elif len(date_label) >= 5:
                 date_label = date_label[-5:]
             painter.setPen(QColor("#8888a8"))
             painter.setFont(QFont("Microsoft YaHei", 9))
-            painter.drawText(x - 4, chart_bottom + 8, bar_w + 8, 16,
+            painter.drawText(x - 4, chart_bottom + 10, bar_w + 8, 16,
                            Qt.AlignCenter, date_label)
 
         # ── 底部标注：横轴含义 ──
@@ -242,13 +243,19 @@ class _BarChart(QWidget):
         painter.drawText(rect.left(), self.rect().bottom() - 4,
                         rect.width(), 16, Qt.AlignCenter, "日期")
 
-        # ── 左侧标注：纵轴含义 ──
+        # ── 左侧标注：纵轴含义（竖排，留足左边距不被裁剪） ──
         painter.save()
-        painter.translate(8, rect.center().y())
+        # 在 left_margin 区域内居中书写
+        label_text = "录音次数"
+        fm = QFontMetrics(QFont("Microsoft YaHei", 10))
+        text_w = fm.horizontalAdvance(label_text)
+        text_h = fm.height()
+        # 旋转中心在左边缘中间
+        painter.translate(18, rect.center().y() + text_w // 2)
         painter.rotate(-90)
         painter.setPen(QColor("#555570"))
         painter.setFont(QFont("Microsoft YaHei", 10))
-        painter.drawText(-40, -4, "录音次数")
+        painter.drawText(-text_w // 2, 0, label_text)
         painter.restore()
 
 
@@ -301,7 +308,7 @@ class StatsPage(QWidget):
         title.setStyleSheet("font-size: 20px; font-weight: bold;")
         layout.addWidget(title)
 
-        # ── 三张指标卡片 ──
+        # ── 四张指标卡片（一行） ──
         cards_row = QHBoxLayout()
         cards_row.setSpacing(12)
 
@@ -311,25 +318,14 @@ class StatsPage(QWidget):
         self._card_speed = _StatCard("平均口述速度")
         cards_row.addWidget(self._card_speed)
 
-        self._card_count = _StatCard("总录音次数")
-        cards_row.addWidget(self._card_count)
-
-        layout.addLayout(cards_row)
-
-        # ── 第二行：口述字数 + 节省时间 ──
-        cards_row2 = QHBoxLayout()
-        cards_row2.setSpacing(12)
-
         self._card_chars = _StatCard("口述字数")
-        cards_row2.addWidget(self._card_chars)
+        cards_row.addWidget(self._card_chars)
 
         self._card_saved = _StatCard("节省时间")
-        cards_row2.addWidget(self._card_saved)
+        cards_row.addWidget(self._card_saved)
 
-        # 占位撑满，保持卡片左对齐
-        cards_row2.addStretch()
-
-        layout.addLayout(cards_row2)
+        cards_row.addStretch()
+        layout.addLayout(cards_row)
 
         # ── 图表区：扇形图 + 柱状图 ──
         charts_row = QHBoxLayout()
@@ -347,9 +343,9 @@ class StatsPage(QWidget):
 
         right = QVBoxLayout()
         right.setSpacing(8)
-        chart_title2 = QLabel("过去 7 天趋势")
-        chart_title2.setObjectName("sectionTitle")
-        right.addWidget(chart_title2)
+        self._chart_title2 = QLabel("过去 7 天趋势")
+        self._chart_title2.setObjectName("sectionTitle")
+        right.addWidget(self._chart_title2)
 
         self._bar = _BarChart()
         right.addWidget(self._bar, 1)
@@ -376,9 +372,6 @@ class StatsPage(QWidget):
             self._card_speed.set_value(f"{spm} 字/分钟")
         else:
             self._card_speed.set_value("—")
-
-        # 总次数
-        self._card_count.set_value(str(total_count))
 
         # ── 口述字数 ──
         if total_chars >= 10000:
@@ -417,6 +410,7 @@ class StatsPage(QWidget):
         # 柱状图
         daily = self._db.get_daily_stats(days=7)
         self._bar.set_data(daily)
+        self._chart_title2.setText(f"过去 7 天趋势（共 {total_count} 次录音）")
 
     def showEvent(self, event):
         """每次切换到统计页时自动刷新"""
