@@ -227,6 +227,12 @@ def main():
     palette.setColor(QPalette.HighlightedText, QColor("#1e1e2e"))
     app.setPalette(palette)
 
+    # ── 应用图标（任务栏 + 标题栏） ──
+    from PySide6.QtGui import QIcon
+    _icon_path = Path(__file__).parent / "resources" / "icon.png"
+    if _icon_path.exists():
+        app.setWindowIcon(QIcon(str(_icon_path)))
+
     # ── 加载配置 ──
     config = Config()
     is_first = not config.load()
