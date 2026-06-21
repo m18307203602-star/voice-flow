@@ -22,10 +22,9 @@ try:
     from .ui.main_window import MainWindow
     from .ui.settings_dialog import SettingsDialog
     from .ui.system_tray import SystemTray
-    from .ui.login_dialog import LoginDialog
     from .ui.activation_dialog import ActivationDialog
     from .ui.trial_banner import TrialBanner
-    from .auth.backend import LocalAuthBackend
+    from .dictionary import DictionaryManager
     from .license.manager import LicenseManager, LicenseState
 except ImportError:
     _parent = Path(__file__).parent.parent
@@ -42,10 +41,9 @@ except ImportError:
     from voice_flow_app.ui.main_window import MainWindow
     from voice_flow_app.ui.settings_dialog import SettingsDialog
     from voice_flow_app.ui.system_tray import SystemTray
-    from voice_flow_app.ui.login_dialog import LoginDialog
     from voice_flow_app.ui.activation_dialog import ActivationDialog
     from voice_flow_app.ui.trial_banner import TrialBanner
-    from voice_flow_app.auth.backend import LocalAuthBackend
+    from voice_flow_app.dictionary import DictionaryManager
     from voice_flow_app.license.manager import LicenseManager, LicenseState
 
 
@@ -274,22 +272,6 @@ def main():
             if not license_mgr.is_usable():
                 sys.exit(0)
 
-    # ── 登录 ──
-    auth = LocalAuthBackend()
-
-    # 尝试自动登录
-    auto_logged_in = False
-    if config.auth_auto_login and config.auth_phone and config.auth_token:
-        if auth.validate_session(config.auth_phone, config.auth_token):
-            auto_logged_in = True
-            log.info("自动登录成功: %s", config.auth_phone)
-
-    if not auto_logged_in:
-        login_dlg = LoginDialog(auth, config=config)
-        if login_dlg.exec() != QDialog.Accepted:
-            # 用户取消登录
-            sys.exit(0)
-
     # ── 提示词加载（纯在线模式：失败即退出，绝无本地回退） ──
     def _load_prompts_safe(log):
         """从服务器拉取提示词。失败 = 程序不可用，禁止离线使用。"""
@@ -354,7 +336,8 @@ def main():
     # ── 初始化各组件 ──
     history_db = HistoryDB()
     audio_muter = AudioMuter()
-    session = VoiceFlowSession(config, prompts)
+    dictionary = DictionaryManager()
+    session = VoiceFlowSession(config, prompts, dictionary=dictionary)
 
     # ── 主窗口 ──
     text_detector = TextFieldDetector()
@@ -366,19 +349,14 @@ def main():
         text_detector=text_detector,
         text_injector=TextInjector,
         license_manager=license_mgr,
+        dictionary=dictionary,
     )
     window.show()
 
     # ── 后台检查更新（启动后 3 秒，不阻塞 UI） ──
     QTimer.singleShot(3000, window.check_for_updates)
 
-    # ── 许可证状态横幅（始终显示：试用/激活/过期） ──
-    banner = TrialBanner(license_mgr, window)
-    banner.activate_clicked.connect(
-        lambda: (window._on_activate_license(), banner.refresh())
-    )
-    window.add_top_widget(banner)
-    window._trial_banner = banner
+    # ── 许可证底栏已在首页内嵌（_create_home_page） ──
     window.add_license_menu()
 
     # ── 定期验证（每 3 天自动联系服务器） ──

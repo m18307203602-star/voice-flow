@@ -1,48 +1,52 @@
-"""Status banner — displays license status (locked / trial / activated / expired)"""
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton
-from PySide6.QtCore import Signal
+"""许可证状态底栏 — Typeless 风格，显示试用进度 / Pro 状态"""
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton, QProgressBar
+from PySide6.QtCore import Signal, Qt
+from PySide6.QtGui import QFont
+
 
 BANNER_STYLE = """
-QWidget#trialBanner {
-    background-color: #2a273f;
-    border-bottom: 1px solid #f59e0b;
+QWidget#licenseFooter {
+    background-color: #12121a;
+    border-top: 1px solid #1e1e30;
 }
-QWidget#activeBanner {
-    background-color: #1a2a1f;
-    border-bottom: 1px solid #4ade80;
-}
-QWidget#expiredBanner {
-    background-color: #2a1f1f;
-    border-bottom: 1px solid #f43f5e;
-}
-QWidget#lockedBanner {
-    background-color: #1f1f2a;
-    border-bottom: 1px solid #f43f5e;
-}
-QLabel {
+QLabel#footerLabel {
+    color: #8888a8;
     font-size: 12px;
 }
-QLabel#trialLabel { color: #f59e0b; }
-QLabel#activeLabel { color: #4ade80; }
-QLabel#expiredLabel { color: #f43f5e; }
-QLabel#lockedLabel { color: #f43f5e; }
-QPushButton#activateBtn {
+QLabel#footerStatus {
+    color: #cdd6f4;
+    font-size: 12px;
+}
+QPushButton#footerBtn {
     background-color: #7c5cfc;
-    color: #0d0d14;
-    padding: 4px 16px;
+    color: #ffffff;
     border: none;
     border-radius: 4px;
-    font-size: 12px;
-    font-weight: bold;
+    padding: 4px 14px;
+    font-size: 11px;
+    font-weight: 600;
 }
-QPushButton#activateBtn:hover {
+QPushButton#footerBtn:hover {
     background-color: #9170ff;
+}
+QProgressBar {
+    background-color: #1e1e30;
+    border: none;
+    border-radius: 2px;
+    height: 4px;
+    max-height: 4px;
+}
+QProgressBar::chunk {
+    background-color: #7c5cfc;
+    border-radius: 2px;
 }
 """
 
+TRIAL_DAYS = 7
+
 
 class LicenseBanner(QWidget):
-    """Banner showing license status at top of MainWindow"""
+    """Typeless 风格许可证底栏"""
 
     activate_clicked = Signal()
 
@@ -50,21 +54,37 @@ class LicenseBanner(QWidget):
         super().__init__(parent)
         self._lm = license_manager
 
-        self.setObjectName("trialBanner")
+        self.setObjectName("licenseFooter")
         self.setStyleSheet(BANNER_STYLE)
-        self.setFixedHeight(36)
+        self.setFixedHeight(40)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 4, 12, 4)
-        layout.setSpacing(8)
+        layout.setContentsMargins(16, 0, 16, 0)
+        layout.setSpacing(12)
 
-        self._label = QLabel()
-        layout.addWidget(self._label)
+        # 左侧：标签
+        self._tag = QLabel("Pro Trial")
+        self._tag.setObjectName("footerLabel")
+        self._tag.setFixedWidth(70)
+        layout.addWidget(self._tag)
+
+        # 中间：状态文字 + 进度条
+        self._status = QLabel()
+        self._status.setObjectName("footerStatus")
+        layout.addWidget(self._status)
+
+        self._progress = QProgressBar()
+        self._progress.setRange(0, TRIAL_DAYS)
+        self._progress.setValue(0)
+        self._progress.setFixedWidth(100)
+        self._progress.setVisible(False)
+        layout.addWidget(self._progress)
 
         layout.addStretch()
 
+        # 右侧：升级按钮
         self._btn = QPushButton("升级Pro")
-        self._btn.setObjectName("activateBtn")
+        self._btn.setObjectName("footerBtn")
         self._btn.clicked.connect(self.activate_clicked.emit)
         layout.addWidget(self._btn)
 
@@ -73,47 +93,54 @@ class LicenseBanner(QWidget):
     def refresh(self):
         state = self._lm.get_state()
 
-        if state.value == "activated":
-            self._show_activated()
-        elif state.value == "permanent":
-            self._show_activated()
-        elif state.value == "locked":
-            self._show_locked()
-        elif state.value in ("expired", "trial_expired", "activated_offline"):
-            self._show_expired()
-        else:
+        if state.value == "trial_active":
             self._show_trial()
-
-    def _show_locked(self):
-        self.setObjectName("lockedBanner")
-        self._label.setObjectName("lockedLabel")
-        self._label.setText("[未升级] 软件已锁定 — 需升级Pro")
-        self._btn.setVisible(True)
-        self._restyle()
+        elif state.value in ("activated", "permanent"):
+            self._show_activated()
+        elif state.value in ("expired", "trial_expired"):
+            self._show_expired()
+        elif state.value == "activated_offline":
+            self._show_offline()
+        else:
+            self._show_locked()
 
     def _show_trial(self):
-        self.setObjectName("trialBanner")
-        self._label.setObjectName("trialLabel")
-        self._label.setText(f"[试用] {self._lm.get_status_text()}")
+        self._tag.setText("Pro Trial")
+        self._tag.setStyleSheet("color: #f59e0b; font-size: 12px; font-weight: 600;")
+        remaining = max(0, self._lm.get_remaining_days())
+        used = TRIAL_DAYS - remaining
+        self._status.setText(f"已使用 {used} 天 / 共 {TRIAL_DAYS} 天")
+        self._progress.setVisible(True)
+        self._progress.setValue(used)
         self._btn.setVisible(True)
-        self._restyle()
 
     def _show_activated(self):
-        self.setObjectName("activeBanner")
-        self._label.setObjectName("activeLabel")
-        self._label.setText(f"[Pro] {self._lm.get_status_text()}")
+        self._tag.setText("Pro")
+        self._tag.setStyleSheet("color: #4ade80; font-size: 12px; font-weight: 600;")
+        self._status.setText(self._lm.get_status_text())
+        self._progress.setVisible(False)
         self._btn.setVisible(False)
-        self._restyle()
 
     def _show_expired(self):
-        self.setObjectName("expiredBanner")
-        self._label.setObjectName("expiredLabel")
-        self._label.setText(f"[已过期] {self._lm.get_status_text()}")
+        self._tag.setText("已过期")
+        self._tag.setStyleSheet("color: #f43f5e; font-size: 12px; font-weight: 600;")
+        self._status.setText(self._lm.get_status_text())
+        self._progress.setVisible(False)
         self._btn.setVisible(True)
-        self._restyle()
 
-    def _restyle(self):
-        self.setStyleSheet(BANNER_STYLE)
+    def _show_offline(self):
+        self._tag.setText("离线")
+        self._tag.setStyleSheet("color: #f59e0b; font-size: 12px; font-weight: 600;")
+        self._status.setText("请连接网络验证许可证")
+        self._progress.setVisible(False)
+        self._btn.setVisible(False)
+
+    def _show_locked(self):
+        self._tag.setText("未激活")
+        self._tag.setStyleSheet("color: #f43f5e; font-size: 12px; font-weight: 600;")
+        self._status.setText("软件已锁定 — 需升级Pro")
+        self._progress.setVisible(False)
+        self._btn.setVisible(True)
 
 
 # Backward-compatible alias

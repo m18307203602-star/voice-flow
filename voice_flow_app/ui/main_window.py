@@ -561,6 +561,12 @@ class MainWindow(QMainWindow):
         self._recent_list.itemClicked.connect(self._on_recent_clicked)
         layout.addWidget(self._recent_list)
 
+        # ── 许可证底栏（Typeless 风格） ──
+        from .trial_banner import LicenseBanner
+        self._trial_banner = LicenseBanner(self._license_manager)
+        self._trial_banner.activate_clicked.connect(self._on_activate_license)
+        layout.addWidget(self._trial_banner)
+
         # ── 法律声明滚动字幕 ──
         self._marquee_text = "此软件已申请专利保护，违法使用将遭受刑事诉讼。"
         self._marquee_box = _MarqueeWidget(self._marquee_text, self)
