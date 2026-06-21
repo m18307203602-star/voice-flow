@@ -5,8 +5,10 @@ import threading
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
     QPushButton, QRadioButton, QCheckBox, QGroupBox, QComboBox, QMenu,
-    QProgressBar, QButtonGroup, QSplitter, QFrame,
+    QProgressBar, QButtonGroup, QSplitter, QFrame, QStackedWidget,
+    QListWidget, QListWidgetItem,
     QMessageBox, QApplication, QTextEdit, QScrollArea,
+    QStyledItemDelegate, QStyle,
 )
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QIcon, QFont, QPalette, QColor, QAction, QPainter
@@ -16,6 +18,9 @@ from PySide6.QtCore import QUrl
 from .history_panel import HistoryPanel
 from .settings_dialog import SettingsDialog
 from .voiceprint_widget import VoiceprintWidget
+from .sidebar import SidebarWidget
+from .stats_page import StatsPage
+from .dictionary_widget import DictionaryWidget
 
 
 MAIN_STYLE = """
@@ -245,10 +250,68 @@ class _MarqueeWidget(QWidget):
         painter.drawText(x, y, self._text)
 
 
+class _ModeItemDelegate(QStyledItemDelegate):
+    """手绘下拉项——艺术字体，白底黑字，选中紫底白字，绕过所有 stylesheet/palette"""
+    _FONT = None
+
+    @classmethod
+    def _get_font(cls):
+        if cls._FONT is None:
+            cls._FONT = QFont("华文行楷", 13)
+            cls._FONT.setBold(True)
+            cls._FONT.setStyleHint(QFont.Serif)
+        return cls._FONT
+
+    def paint(self, painter, option, index):
+        painter.save()
+        painter.setFont(self._get_font())
+        rect = option.rect
+        if option.state & QStyle.State_Selected:
+            painter.fillRect(rect, QColor("#7c5cfc"))
+            painter.setPen(QColor("#ffffff"))
+        elif option.state & QStyle.State_MouseOver:
+            painter.fillRect(rect, QColor("#e8e8f0"))
+            painter.setPen(QColor("#1a1a2e"))
+        else:
+            painter.fillRect(rect, QColor("#ffffff"))
+            painter.setPen(QColor("#1a1a2e"))
+        text = index.data(Qt.DisplayRole)
+        painter.drawText(rect.adjusted(14, 0, -14, 0),
+                         Qt.AlignVCenter | Qt.AlignLeft, text)
+        painter.restore()
+
+
+class _PrimaryModelDelegate(QStyledItemDelegate):
+    """主模型下拉项——金色文字，深色背景"""
+    def paint(self, painter, option, index):
+        painter.save()
+        rect = option.rect
+        if option.state & QStyle.State_Selected:
+            painter.fillRect(rect, QColor("#2e2e48"))
+            painter.setPen(QColor("#FFD700"))
+        elif option.state & QStyle.State_MouseOver:
+            painter.fillRect(rect, QColor("#252540"))
+            painter.setPen(QColor("#FFD700"))
+        else:
+            painter.fillRect(rect, QColor("#151520"))
+            painter.setPen(QColor("#FFD700"))
+        text = index.data(Qt.DisplayRole)
+        painter.drawText(rect.adjusted(12, 0, -12, 0),
+                         Qt.AlignVCenter | Qt.AlignLeft, text)
+        painter.restore()
+
+
+class _DropdownStyledCombo(QComboBox):
+    """使用自定义 delegate 渲染下拉项，白底黑字一目了然"""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setItemDelegate(_ModeItemDelegate(self))
+
+
 class MainWindow(QMainWindow):
     """Voice Flow 主窗口"""
 
-    def __init__(self, config, session, history_db, audio_muter, text_detector, text_injector, license_manager=None):
+    def __init__(self, config, session, history_db, audio_muter, text_detector, text_injector, license_manager=None, dictionary=None):
         super().__init__()
         self._config = config
         self._session = session
@@ -257,6 +320,7 @@ class MainWindow(QMainWindow):
         self._text_detector = text_detector
         self._text_injector = text_injector
         self._license_manager = license_manager
+        self._dictionary = dictionary
         self._trial_banner = None
 
         self.setWindowTitle("Voice Flow")
@@ -271,15 +335,47 @@ class MainWindow(QMainWindow):
     def _setup_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
-        self._root = QVBoxLayout(central)
-        self._root.setContentsMargins(12, 12, 12, 12)
-        self._root.setSpacing(8)
+        self._root = QHBoxLayout(central)
+        self._root.setContentsMargins(0, 0, 0, 0)
+        self._root.setSpacing(0)
+
+        # ── 左侧导航栏 ──
+        self._sidebar = SidebarWidget()
+        self._sidebar.current_changed.connect(self._on_sidebar_changed)
+        self._root.addWidget(self._sidebar)
+
+        # ── 右侧内容区（QStackedWidget） ──
+        self._stack = QStackedWidget()
+        self._root.addWidget(self._stack, 1)
+
+        # ── Page 0: 首页 ──
+        self._home_page = self._create_home_page()
+        self._stack.addWidget(self._home_page)
+
+        # ── Page 1: 历史记录 ──
+        self._history_panel = HistoryPanel(self._history_db, self._config)
+        self._stack.addWidget(self._history_panel)
+
+        # ── Page 2: 词典 ──
+        self._dict_widget = DictionaryWidget(self._dictionary)
+        self._stack.addWidget(self._dict_widget)
+
+        # ── Page 3: 统计 ──
+        self._stats_page = StatsPage(self._history_db)
+        self._stack.addWidget(self._stats_page)
+
+    def _create_home_page(self):
+        """创建首页内容（所有现有控件 + 最近记录预览）"""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
 
         # ── 顶部：模式 + 引擎 ──
         top_row = QHBoxLayout()
 
         # 模式选择（下拉框，紧凑不占空间）
-        self._mode_combo = QComboBox()
+        self._mode_combo = _DropdownStyledCombo()
         self._mode_combo.setFixedWidth(120)
         mode_names = {"1": "中英文（推荐）", "2": "纯英文", "3": "纯中文", "4": "文采", "5": "情感", "6": "代码"}
         mode_tips = {
@@ -295,7 +391,6 @@ class MainWindow(QMainWindow):
         top_row.addSpacing(12)
 
         # 模式下拉框七彩闪烁动画
-        import time as _time
         self._mode_gradient_timer = QTimer(self)
         self._mode_gradient_timer.timeout.connect(self._update_mode_combo_gradient)
         self._update_mode_combo_gradient()  # 立即应用首帧，避免闪黑
@@ -338,6 +433,7 @@ class MainWindow(QMainWindow):
 
         # 主模型快速切换
         self._primary_combo = QComboBox()
+        self._primary_combo.setItemDelegate(_PrimaryModelDelegate(self))
         self._primary_combo.setFixedWidth(130)
         self._primary_combo.setToolTip("选择注入输入框的主模型（对比模型仅展示不注入）\n切换后立即生效，无需重启")
         self._primary_combo.setStyleSheet("""
@@ -350,8 +446,8 @@ class MainWindow(QMainWindow):
             QComboBox::drop-down { border: none; width: 20px; }
             QComboBox::down-arrow { image: none; }
             QComboBox QAbstractItemView {
-                color: #e4e4f0; background: #151520;
-                selection-background-color: #2e2e48; selection-color: #7c5cfc;
+                color: #FFD700; background: #151520;
+                selection-background-color: #2e2e48; selection-color: #FFD700;
                 outline: none; border: 1px solid #2a2a3e;
                 border-radius: 8px; padding: 4px;
             }
@@ -366,7 +462,7 @@ class MainWindow(QMainWindow):
         self._btn_settings.setFixedWidth(100)
         top_row.addWidget(self._btn_settings)
 
-        self._root.addLayout(top_row)
+        layout.addLayout(top_row)
 
         # ── 控制栏 ──
         ctrl_row = QHBoxLayout()
@@ -397,7 +493,7 @@ class MainWindow(QMainWindow):
         ctrl_row.addWidget(QLabel("电平"))
         ctrl_row.addWidget(self._level_bar)
 
-        self._root.addLayout(ctrl_row)
+        layout.addLayout(ctrl_row)
 
         # ── 引擎状态标签 ──
         eng_status_row = QHBoxLayout()
@@ -428,30 +524,53 @@ class MainWindow(QMainWindow):
         """)
         self._btn_usage_stats.clicked.connect(self._show_usage_stats)
         eng_status_row.addWidget(self._btn_usage_stats)
-
         eng_status_row.addStretch()
-        self._root.addLayout(eng_status_row)
+        layout.addLayout(eng_status_row)
 
         # ── 模型对比面板（默认隐藏） ──
         self._comparison_panel = self._create_comparison_panel()
         self._comparison_panel.setVisible(False)
-        self._root.addWidget(self._comparison_panel)
-
-        # ── 历史面板（占大部分空间） ──
-        self._history_panel = HistoryPanel(self._history_db, self._config)
-        self._root.addWidget(self._history_panel, 1)
+        layout.addWidget(self._comparison_panel)
 
         # ── 声纹浮动窗口 ──
         self._voiceprint = VoiceprintWidget()
 
-        # ── 底部法律声明滚动字幕 ──
+        # ── 最近记录预览（5 条） ──
+        recent_label = QLabel("📌 最近记录")
+        recent_label.setStyleSheet("color: #8888a8; font-size: 12px; font-weight: 600;")
+        layout.addWidget(recent_label)
+
+        self._recent_list = QListWidget()
+        self._recent_list.setMaximumHeight(200)
+        self._recent_list.setStyleSheet("""
+            QListWidget {
+                background-color: #151520; border: 1px solid #2a2a3e;
+                border-radius: 6px;
+            }
+            QListWidget::item {
+                color: #cdd6f4; padding: 6px 10px;
+                border-bottom: 1px solid #1e1e30;
+            }
+            QListWidget::item:hover {
+                background-color: #1e1e32; color: #e4e4f0;
+            }
+            QListWidget::item:selected {
+                background-color: #2a2a3e;
+            }
+        """)
+        self._recent_list.itemClicked.connect(self._on_recent_clicked)
+        layout.addWidget(self._recent_list)
+
+        # ── 法律声明滚动字幕 ──
         self._marquee_text = "此软件已申请专利保护，违法使用将遭受刑事诉讼。"
         self._marquee_box = _MarqueeWidget(self._marquee_text, self)
         self._marquee_box.setFixedHeight(32)
         self._marquee_timer = QTimer(self)
         self._marquee_timer.timeout.connect(self._tick_marquee)
         self._marquee_timer.start(50)  # ~20 fps
-        self._root.addWidget(self._marquee_box)
+        layout.addWidget(self._marquee_box)
+
+        return page
 
     def _connect_signals(self):
         # 按钮
@@ -499,6 +618,9 @@ class MainWindow(QMainWindow):
 
         # 主模型快速切换
         self._refresh_primary_combo()
+
+        # 首页最近记录
+        self._refresh_recent_list()
 
     # ── 模型显示名映射 ──
     _MODEL_DISPLAY_NAMES = ["MiMo Flash", "Qwen3.5-Flash", "Qwen-Plus", "DeepSeek-Chat", "Gemini 2.0 Flash"]
@@ -566,6 +688,7 @@ class MainWindow(QMainWindow):
 
     def _play_sound(self, wav_path: str):
         """跨平台播放 WAV 提示音"""
+        import os
         if not os.path.exists(wav_path):
             return
         try:
@@ -660,6 +783,8 @@ class MainWindow(QMainWindow):
         )
         self._history_db.add(entry)
         self._history_panel.refresh()
+        if hasattr(self, '_recent_list'):
+            self._refresh_recent_list()
 
         # 检测焦点：输入框→注入，否则→仅存历史
         focused = self._text_detector.is_text_field_focused()
@@ -700,9 +825,6 @@ class MainWindow(QMainWindow):
             "QComboBox { color: qlineargradient(x1:0,y1:0,x2:1,y2:0, "
             + ", ".join(shifted)
             + "); font-weight: 600; }"
-            " QComboBox QAbstractItemView { color: #e4e4f0; background: #151520;"
-            " selection-background-color: #2e2e48; selection-color: #7c5cfc;"
-            " outline: none; border: 1px solid #2a2a3e; border-radius: 8px; padding: 4px; }"
         )
 
     def _on_mode_combo_changed(self, index):
@@ -768,7 +890,7 @@ class MainWindow(QMainWindow):
             """)
             self._btn_stt_mode.setToolTip("短连接已开：腾讯一句话识别优先，失败自动切讯飞流式兜底")
         else:
-            self._btn_stt_mode.setText("⚡ 短连接")
+            self._btn_stt_mode.setText("⚡ 关")
             self._btn_stt_mode.setStyleSheet("""
                 QPushButton {
                     background-color: #1c1c2e;
@@ -1138,13 +1260,20 @@ class MainWindow(QMainWindow):
         self._root.insertWidget(0, widget)
 
     def add_license_menu(self):
-        """添加许可证相关菜单项"""
+        """添加许可证和词库菜单项"""
         from PySide6.QtGui import QAction
         menu_bar = self.menuBar()
-        help_menu = menu_bar.addMenu("许可证")
+
+        # 许可证菜单
+        license_menu = menu_bar.addMenu("许可证")
         activate_action = QAction("升级Pro", self)
         activate_action.triggered.connect(self._on_activate_license)
-        help_menu.addAction(activate_action)
+        license_menu.addAction(activate_action)
+
+        license_menu.addSeparator()
+        dict_action = QAction("词库管理", self)
+        dict_action.triggered.connect(lambda: self._sidebar.switch_to("dictionary"))
+        license_menu.addAction(dict_action)
 
     def _on_activate_license(self):
         """打开升级Pro对话框"""
@@ -1154,6 +1283,29 @@ class MainWindow(QMainWindow):
             # 激活成功后刷新横幅状态
             if hasattr(self, '_trial_banner') and self._trial_banner:
                 self._trial_banner.refresh()
+
+    def _on_sidebar_changed(self, index: int):
+        """左侧导航切换 → 右侧页面切换"""
+        self._stack.setCurrentIndex(index)
+
+    def _on_recent_clicked(self, item: QListWidgetItem):
+        """首页最近记录被点击 → 跳转到历史记录页并定位"""
+        entry_id = item.data(Qt.UserRole)
+        if entry_id:
+            self._sidebar.switch_to("history")  # 切换到历史页
+            if hasattr(self, '_history_panel') and self._history_panel:
+                self._history_panel.jump_to_item(entry_id)  # 定位到具体记录
+
+    def _refresh_recent_list(self):
+        """刷新首页最近 5 条记录"""
+        self._recent_list.clear()
+        entries = self._history_db.get_all(limit=5, order_asc=False)
+        for entry in entries:
+            preview = entry.result[:50].replace('\n', ' ') if entry.result else "(无结果)"
+            label = f"{entry.created_at}  [{entry.mode_name}]  {preview}"
+            item = QListWidgetItem(label)
+            item.setData(Qt.UserRole, entry.id)
+            self._recent_list.addItem(item)
 
     def show_license_expired_warning(self):
         """许可证过期警告"""
