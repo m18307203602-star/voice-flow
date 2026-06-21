@@ -109,9 +109,9 @@ class LicenseManager:
             if not exp_str or exp_str == "permanent":
                 return None
             try:
-                from datetime import datetime
-                now = datetime.utcnow()
-                activated = datetime.utcfromtimestamp(at)
+                from datetime import datetime, timezone
+                now = datetime.now(timezone.utc)
+                activated = datetime.fromtimestamp(at, tz=timezone.utc)
                 expires = datetime.fromisoformat(exp_str)
                 used = max(0, (now - activated).days)
                 total = max(used, (expires - activated).days)
@@ -257,13 +257,13 @@ class LicenseManager:
             return
         exp_str = self._decoded_payload.get("e", "")
         try:
-            from datetime import datetime
+            from datetime import datetime, timezone
             expires = datetime.fromisoformat(exp_str)
-            if datetime.utcnow() > expires:
+            if datetime.now(timezone.utc) > expires:
                 self._state = LicenseState.TRIAL_EXPIRED
                 self._remaining_days = 0
                 return
-            remaining = (expires - datetime.utcnow()).days
+            remaining = (expires - datetime.now(timezone.utc)).days
             self._remaining_days = max(0, remaining)
             self._state = LicenseState.TRIAL_ACTIVE
         except Exception:
@@ -284,9 +284,9 @@ class LicenseManager:
             return
 
         try:
-            from datetime import datetime
+            from datetime import datetime, timezone
             expires = datetime.fromisoformat(exp_str)
-            if datetime.utcnow() > expires:
+            if datetime.now(timezone.utc) > expires:
                 self._state = LicenseState.EXPIRED
                 return
         except Exception:
