@@ -357,11 +357,16 @@ class MainWindow(QMainWindow):
         self._stack.addWidget(self._home_page)
 
         # ── Page 2: 历史记录 ──
-        self._history_panel = HistoryPanel(self._history_db, self._config)
+        self._history_panel = HistoryPanel(
+            self._history_db, self._config, dictionary=self._dictionary,
+        )
+        self._history_panel.correction_made.connect(self._on_correction_made)
         self._stack.addWidget(self._history_panel)
 
         # ── Page 3: 词典 ──
         self._dict_widget = DictionaryWidget(self._dictionary)
+        self._dict_widget.set_history_db(self._history_db)
+        self._dict_widget.dictionary_changed.connect(self._on_dictionary_changed)
         self._stack.addWidget(self._dict_widget)
 
     def _create_home_page(self):
@@ -1282,6 +1287,16 @@ class MainWindow(QMainWindow):
             # 激活成功后刷新侧边栏许可证横幅
             if hasattr(self, '_sidebar') and self._sidebar:
                 self._sidebar.refresh_banner()
+
+    def _on_correction_made(self):
+        """用户完成纠错 → 刷新词典页面的纠错记录"""
+        if hasattr(self, '_dict_widget') and self._dict_widget:
+            self._dict_widget.refresh_all()
+
+    def _on_dictionary_changed(self):
+        """词典内容变更 → 刷新首页统计数据"""
+        if hasattr(self, '_stats_page') and self._stats_page:
+            self._stats_page.refresh()
 
     def _on_sidebar_changed(self, index: int):
         """左侧导航切换 → 右侧页面切换"""

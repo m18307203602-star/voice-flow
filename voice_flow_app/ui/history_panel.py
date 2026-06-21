@@ -40,13 +40,15 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QTextEdit, QListWidget, QListWidgetItem,
-    QSplitter, QLineEdit,
+    QSplitter, QLineEdit, QDialog, QDialogButtonBox,
+    QScrollArea, QFrame, QMessageBox,
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 from datetime import date, datetime, timedelta
 import json
 import re
+import difflib
 
 ANALYSIS_PROMPT = """你是工作日志分析师。以下是用户今天的所有语音录音内容（共 {count} 条），请严格按以下格式输出分析报告：
 
@@ -97,17 +99,292 @@ ANALYSIS_PROMPT = """你是工作日志分析师。以下是用户今天的所�
 {content}"""
 
 
+class _CorrectionDialog(QDialog):
+    """纠错编辑对话框 — 编辑 LLM 输出，自动检测差异，一键加入词典
+
+    布局：
+      ┌──────────────────────────────────────┐
+      │  📝 纠错编辑                          │
+      │                                      │
+      │  原始识别：(只读)                      │
+      │  ┌──────────────────────────────────┐ │
+      │  │ STT 原始转写文本...               │ │
+      │  └──────────────────────────────────┘ │
+      │                                      │
+      │  输出结果：(可编辑)                    │
+      │  ┌──────────────────────────────────┐ │
+      │  │ LLM 输出文本（可修改）...          │ │
+      │  └──────────────────────────────────┘ │
+      │                                      │
+      │  🔍 检测到 N 处修改：                  │
+      │  ┌──────────────────────────────────┐ │
+      │  │ 原文片段 → 修正片段   [加入词典]   │ │
+      │  │ 原文片段2 → 修正片段2 [加入词典]   │ │
+      │  └──────────────────────────────────┘ │
+      │                                      │
+      │  [全部加入词典]  [仅保存修改]  [取消]   │
+      └──────────────────────────────────────┘
+    """
+
+    STYLE = """
+    QDialog { background-color: #0d0d14; }
+    QLabel { color: #e4e4f0; font-size: 13px; }
+    QLabel#title { font-size: 16px; font-weight: bold; color: #e4e4f0; }
+    QLabel#sectionLabel { color: #8888a8; font-size: 11px; font-weight: 600; }
+    QLabel#diffLabel { color: #f59e0b; font-size: 12px; }
+    QTextEdit {
+        background-color: #151520; color: #e4e4f0;
+        border: 1px solid #2a2a3e; border-radius: 6px;
+        font-size: 12px; padding: 8px;
+    }
+    QPushButton {
+        background-color: #222238; color: #e4e4f0;
+        border: 1px solid #2a2a3e; border-radius: 6px;
+        padding: 6px 14px; font-size: 12px;
+    }
+    QPushButton:hover { background-color: #2e2e48; }
+    QPushButton#addToDictBtn {
+        background-color: #4ade80; color: #0d0d14;
+        border: none; font-weight: 600;
+    }
+    QPushButton#addToDictBtn:hover { background-color: #6ee7a0; }
+    QPushButton#addAllBtn {
+        background-color: #7c5cfc; color: #fff;
+        border: none; font-weight: 600;
+    }
+    QPushButton#addAllBtn:hover { background-color: #9170ff; }
+    QPushButton#saveBtn {
+        background-color: #7c5cfc; color: #fff;
+        border: none; font-weight: 600;
+    }
+    QPushButton#saveBtn:hover { background-color: #9170ff; }
+    QFrame#diffFrame {
+        background-color: #1c1c2e; border: 1px solid #2a2a3e;
+        border-radius: 6px;
+    }
+    """
+
+    def __init__(self, original_transcripts: dict, result_text: str, dictionary, parent=None):
+        super().__init__(parent)
+        self._dict = dictionary
+        self._original_result = result_text
+        self._diffs: list[tuple[str, str]] = []  # [(from_text, to_text), ...]
+
+        self.setWindowTitle("纠错编辑")
+        self.setMinimumSize(600, 520)
+        self.resize(650, 580)
+        self.setStyleSheet(self.STYLE)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(10)
+
+        title = QLabel("📝 纠错编辑")
+        title.setObjectName("title")
+        layout.addWidget(title)
+
+        # ── 原始识别（只读） ──
+        trans_label = QLabel("原始识别：")
+        trans_label.setObjectName("sectionLabel")
+        layout.addWidget(trans_label)
+
+        trans_text = QTextEdit()
+        trans_text.setReadOnly(True)
+        trans_text.setMaximumHeight(100)
+        trans_lines = []
+        for eng, text in original_transcripts.items():
+            if text and not str(text).startswith("[错误]"):
+                trans_lines.append(f"[{eng}] {text}")
+        trans_text.setPlainText('\n'.join(trans_lines) if trans_lines else "(无原始识别)")
+        layout.addWidget(trans_text)
+
+        # ── 输出结果（可编辑） ──
+        result_label = QLabel("输出结果：（可直接编辑修正）")
+        result_label.setObjectName("sectionLabel")
+        layout.addWidget(result_label)
+
+        self._result_edit = QTextEdit()
+        self._result_edit.setPlainText(result_text)
+        self._result_edit.setMinimumHeight(120)
+        layout.addWidget(self._result_edit, 1)
+
+        # ── 差异检测区域 ──
+        diff_label = QLabel("🔍 检测到修改：")
+        diff_label.setObjectName("sectionLabel")
+        layout.addWidget(diff_label)
+
+        self._diff_container = QVBoxLayout()
+        self._diff_container.setSpacing(4)
+        diff_frame = QFrame()
+        diff_frame.setObjectName("diffFrame")
+        diff_frame.setLayout(self._diff_container)
+        diff_frame.setMaximumHeight(140)
+        layout.addWidget(diff_frame)
+
+        self._diff_empty = QLabel("  编辑输出结果后点击「检测差异」")
+        self._diff_empty.setStyleSheet("color: #555570; font-size: 12px;")
+        self._diff_container.addWidget(self._diff_empty)
+
+        # ── 按钮行 1：检测差异 ──
+        detect_row = QHBoxLayout()
+        detect_btn = QPushButton("🔍 检测差异")
+        detect_btn.clicked.connect(self._detect_diffs)
+        detect_row.addWidget(detect_btn)
+        detect_row.addStretch()
+        layout.addLayout(detect_row)
+
+        # ── 按钮行 2：保存/取消 ──
+        btn_row = QHBoxLayout()
+        self._add_all_btn = QPushButton("📥 全部加入词典")
+        self._add_all_btn.setObjectName("addAllBtn")
+        self._add_all_btn.clicked.connect(self._add_all_to_dict)
+        self._add_all_btn.setVisible(False)
+        btn_row.addWidget(self._add_all_btn)
+
+        btn_row.addStretch()
+
+        self._save_btn = QPushButton("💾 仅保存修改")
+        self._save_btn.setObjectName("saveBtn")
+        self._save_btn.clicked.connect(self._save_only)
+        btn_row.addWidget(self._save_btn)
+
+        cancel_btn = QPushButton("取消")
+        cancel_btn.clicked.connect(self.reject)
+        btn_row.addWidget(cancel_btn)
+
+        layout.addLayout(btn_row)
+
+    def _detect_diffs(self):
+        """对比原始结果和当前编辑文本，检测差异"""
+        new_text = self._result_edit.toPlainText()
+        if new_text == self._original_result:
+            self._clear_diffs()
+            self._diff_empty = QLabel("  未检测到修改")
+            self._diff_empty.setStyleSheet("color: #555570; font-size: 12px;")
+            self._diff_container.addWidget(self._diff_empty)
+            return
+
+        # 用 SequenceMatcher 找出差异
+        matcher = difflib.SequenceMatcher(
+            None, self._original_result, new_text
+        )
+        ops = matcher.get_opcodes()
+
+        self._clear_diffs()
+        self._diffs = []
+
+        diff_count = 0
+        for tag, i1, i2, j1, j2 in ops:
+            if tag == 'equal':
+                continue
+            if tag in ('replace', 'delete', 'insert'):
+                from_text = self._original_result[i1:i2].strip()
+                to_text = new_text[j1:j2].strip()
+
+                # 跳过空白变化
+                if not from_text and not to_text:
+                    continue
+                if from_text == to_text:
+                    continue
+
+                # 只关注 2-20 字的修改（太短无意义，太长是整段重写）
+                if len(from_text) < 2 and len(to_text) < 2:
+                    continue
+                if len(from_text) > 30 or len(to_text) > 30:
+                    continue
+
+                diff_count += 1
+                self._diffs.append((from_text, to_text))
+
+                # 添加差异行
+                diff_row = QHBoxLayout()
+                diff_row.setSpacing(8)
+
+                from_lbl = QLabel(f"「{from_text or '(空)'}」 → 「{to_text or '(空)'}」")
+                from_lbl.setStyleSheet("color: #f59e0b; font-size: 12px;")
+                diff_row.addWidget(from_lbl)
+                diff_row.addStretch()
+
+                add_btn = QPushButton("加入词典")
+                add_btn.setObjectName("addToDictBtn")
+                add_btn.setFixedWidth(80)
+                idx = diff_count - 1
+                add_btn.clicked.connect(
+                    lambda checked, i=idx: self._add_single_to_dict(i)
+                )
+                diff_row.addWidget(add_btn)
+
+                diff_widget = QWidget()
+                diff_widget.setLayout(diff_row)
+                self._diff_container.addWidget(diff_widget)
+
+        if diff_count == 0:
+            self._diff_empty = QLabel("  未检测到需要纠错的修改（修改太小或太大）")
+            self._diff_empty.setStyleSheet("color: #555570; font-size: 12px;")
+            self._diff_container.addWidget(self._diff_empty)
+            self._add_all_btn.setVisible(False)
+        else:
+            self._add_all_btn.setVisible(True)
+
+    def _clear_diffs(self):
+        """清除差异显示区域"""
+        while self._diff_container.count():
+            item = self._diff_container.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+    def _add_single_to_dict(self, index: int):
+        """将单个差异加入词典"""
+        if 0 <= index < len(self._diffs):
+            from_text, to_text = self._diffs[index]
+            self._dict.add_correction(from_text, to_text)
+            self._dict.add(from_text, to_text)  # 同时加入正式词典
+            # 标记已添加
+            self._diffs[index] = (from_text, to_text)  # 保持不变
+            QMessageBox.information(
+                self, "已添加",
+                f"「{from_text}」→「{to_text}」已加入词典和纠错记录。"
+            )
+
+    def _add_all_to_dict(self):
+        """将所有检测到的差异加入词典"""
+        if not self._diffs:
+            return
+        count = 0
+        for from_text, to_text in self._diffs:
+            if from_text and to_text:
+                self._dict.add_correction(from_text, to_text)
+                self._dict.add(from_text, to_text)
+                count += 1
+        QMessageBox.information(
+            self, "已添加",
+            f"已将 {count} 条修改加入词典和纠错记录。"
+        )
+
+    def _save_only(self):
+        """仅保存修改后的文本（不加入词典）"""
+        new_text = self._result_edit.toPlainText()
+        self._edited_text = new_text
+        self.accept()
+
+    def get_edited_text(self) -> str:
+        """获取编辑后的文本"""
+        return getattr(self, '_edited_text', self._result_edit.toPlainText())
+
+
 class HistoryPanel(QWidget):
     """历史记录面板：左侧列表 + 右侧详情"""
 
     entry_selected = Signal(int)  # entry_id
     entry_clicked = Signal(int)   # entry_id — 首页最近记录点击跳转
     _analysis_ready = Signal(str)  # 分析完成信号（后台线程 → 主线程）
+    correction_made = Signal()    # 用户完成纠错（通知外部刷新词典）
 
-    def __init__(self, history_db, config=None):
+    def __init__(self, history_db, config=None, dictionary=None):
         super().__init__()
         self._db = history_db
         self._config = config
+        self._dict = dictionary
 
         self._analysis_ready.connect(self._show_analysis)
 
@@ -229,6 +506,11 @@ class HistoryPanel(QWidget):
         self._btn_copy = QPushButton("复制结果")
         self._btn_copy.clicked.connect(self._copy_result)
         btn_row.addWidget(self._btn_copy)
+
+        self._btn_correct = QPushButton("✏️ 纠错")
+        self._btn_correct.setToolTip("编辑修正 LLM 输出文本，自动检测差异并加入词典")
+        self._btn_correct.clicked.connect(self._on_correct)
+        btn_row.addWidget(self._btn_correct)
 
         self._btn_delete = QPushButton("删除")
         self._btn_delete.clicked.connect(self._delete_current)
@@ -636,6 +918,35 @@ class HistoryPanel(QWidget):
         if entry and entry.result:
             import pyperclip
             pyperclip.copy(entry.result)
+
+    def _on_correct(self):
+        """打开纠错对话框，允许编辑 LLM 输出并检测差异"""
+        if not self._current_entry_id:
+            return
+        entry = self._db.get_by_id(self._current_entry_id)
+        if not entry or not entry.result:
+            return
+
+        dlg = _CorrectionDialog(
+            original_transcripts=entry.transcripts,
+            result_text=entry.result,
+            dictionary=self._dict,
+            parent=self,
+        )
+        if dlg.exec():
+            # 用户点击了「仅保存修改」或「全部加入词典后保存」
+            new_text = dlg.get_edited_text()
+            if new_text != entry.result:
+                # 更新数据库中的 result 字段
+                self._db._conn.execute(
+                    "UPDATE recordings SET result = ? WHERE id = ?",
+                    (new_text, entry.id),
+                )
+                self._db._conn.commit()
+                # 刷新详情显示
+                self._on_select(self._list.currentRow())
+                # 通知外部刷新词典
+                self.correction_made.emit()
 
     def _delete_current(self):
         if not self._current_entry_id:
