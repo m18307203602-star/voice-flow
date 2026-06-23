@@ -5,8 +5,7 @@ import sys
 import os
 from pathlib import Path
 
-_SPEC_DIR = Path(os.path.abspath(SPECPATH)).parent
-_PROJECT = Path(_SPEC_DIR).parent  # build_tools/ 的父目录
+_PROJECT = Path(os.path.abspath(SPECPATH)).parent  # SPECPATH = build_tools/, parent = 项目根
 _APP = _PROJECT / "voice_flow_app"
 
 # ── PySide6 插件收集 ──
