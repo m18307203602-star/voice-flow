@@ -38,4 +38,4 @@ edge-tts>=7.0
 
 # ── 打包（仅 CI 需要） ──
 setuptools>=70.0
-pyinstaller>=5.13,<6.0
+pyinstaller>=6.0
