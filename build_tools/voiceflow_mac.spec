@@ -14,20 +14,24 @@ _PYSIDE6 = Path(PySide6.__file__).parent
 
 block_cipher = None  # macOS 不需要字节码加密
 
+# ── 条件 datas：路径存在才添加（PySide6 插件布局因平台/版本而异）──
+_datas = []
+for _src, _dst in [
+    (_PYSIDE6 / "plugins" / "platforms", "PySide6/plugins/platforms"),
+    (_PYSIDE6 / "plugins" / "styles", "PySide6/plugins/styles"),
+    (_PYSIDE6 / "plugins" / "imageformats", "PySide6/plugins/imageformats"),
+    (_PYSIDE6 / "plugins" / "tls", "PySide6/plugins/tls"),
+    (_APP / "resources" / "sounds" / "start.wav", "voice_flow_app/resources/sounds"),
+    (_APP / "resources" / "sounds" / "stop.wav", "voice_flow_app/resources/sounds"),
+]:
+    if os.path.exists(str(_src)):
+        _datas.append((str(_src), _dst))
+
 a = Analysis(
     [str(_PROJECT / "build_tools" / "launcher.py")],
     pathex=[str(_PROJECT)],
     binaries=[],
-    datas=[
-        # PySide6 Qt 插件
-        (_PYSIDE6 / "plugins" / "platforms", "PySide6/plugins/platforms"),
-        (_PYSIDE6 / "plugins" / "styles", "PySide6/plugins/styles"),
-        (_PYSIDE6 / "plugins" / "imageformats", "PySide6/plugins/imageformats"),
-        (_PYSIDE6 / "plugins" / "tls", "PySide6/plugins/tls"),
-        # 音频资源
-        (str(_APP / "resources" / "sounds" / "start.wav"), "voice_flow_app/resources/sounds"),
-        (str(_APP / "resources" / "sounds" / "stop.wav"), "voice_flow_app/resources/sounds"),
-    ],
+    datas=_datas,
     hiddenimports=[
         # PySide6
         "PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets",
