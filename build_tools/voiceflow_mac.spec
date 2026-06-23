@@ -173,14 +173,14 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=str(_APP / "resources" / "icon.ico") if (_APP / "resources" / "icon.ico").exists() else None,
+    icon=None,  # ponytail: .icns required on macOS, skip for now
 )
 
 # macOS .app Bundle
 app = BUNDLE(
     exe,
     name="VoiceFlow.app",
-    icon=str(_APP / "resources" / "icon.ico") if (_APP / "resources" / "icon.ico").exists() else None,
+    icon=None,  # ponytail: .icns required on macOS, skip for now
     bundle_identifier="com.voiceflow.app",
     info_plist={
         "CFBundleShortVersionString": "3.0.0",
