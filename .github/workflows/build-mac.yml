@@ -27,9 +27,18 @@ jobs:
         run: |
           pyinstaller --noconfirm build_tools/voiceflow_mac.spec
 
-      - name: Upload .app artifact
+      - name: Package DMG
+        run: |
+          # 创建临时目录，放 .app + Applications 快捷方式（DMG 拖放安装的标配）
+          mkdir -p dist/dmg
+          cp -R dist/VoiceFlow.app dist/dmg/
+          ln -s /Applications dist/dmg/Applications
+          # 打包 DMG
+          hdiutil create -volname "VoiceFlow" -srcfolder dist/dmg -ov -format UDZO dist/VoiceFlow-3.0.0.dmg
+
+      - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
-          name: VoiceFlow-macOS
-          path: dist/VoiceFlow.app
+          name: VoiceFlow-macOS-DMG
+          path: dist/VoiceFlow-3.0.0.dmg
           retention-days: 30
