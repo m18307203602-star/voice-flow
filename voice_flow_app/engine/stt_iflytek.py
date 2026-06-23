@@ -83,6 +83,13 @@ class IflytekStreamingASR:
                 break
 
     def start(self):
+        # ★ 防御性重置：确保不会残留上一次的识别文本
+        self._segments = []
+        self._text = ""
+        self._buffer = bytearray()
+        self._first_frame = True
+        self._error = None
+        self._done.clear()
         self._log("讯飞: 连接中...")
         url = self._build_url()
         self._ws = websocket.create_connection(

@@ -42,7 +42,7 @@ QProgressBar::chunk {
 }
 """
 
-TRIAL_DAYS = 7
+TRIAL_DAYS = 3
 
 
 class LicenseBanner(QWidget):

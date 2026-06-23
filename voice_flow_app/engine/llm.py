@@ -164,13 +164,32 @@ class LLMProcessor:
         text = re.sub(r'\n{3,}', '\n\n', text)
         return text.strip()
 
-    async def process(self, text: str, system_prompt: str, temperature: float) -> LLMResult:
+    async def process(self, text: str, system_prompt: str, temperature: float,
+                      model_name: str = None) -> LLMResult:
         full_prompt = f"{system_prompt}\n\n输入内容：\n{text}"
 
         candidates = self.available_models
         if not candidates:
             self._log("LLM: 无可用模型（所有 Key 为空）")
             return LLMResult(text=text, model_used="无可用模型")
+
+        # 指定模型时优先只用它，失败再走降级链
+        if model_name:
+            for name, fn in candidates:
+                if name == model_name:
+                    try:
+                        self._log(f"LLM: 使用指定模型 {name}...")
+                        result, usage = await fn(full_prompt, temperature)
+                        cleaned = self._clean_output(result)
+                        self._log(f"LLM: {name} 成功")
+                        return LLMResult(text=cleaned, model_used=name,
+                                         prompt_tokens=usage.get("prompt_tokens", 0),
+                                         completion_tokens=usage.get("completion_tokens", 0))
+                    except Exception as e:
+                        err_msg = str(e)[:80]
+                        self._log(f"LLM: 指定模型 {name} 失败 ({err_msg})，走降级链")
+                    break
+            # 指定模型不可用 → 降级链兜底
 
         for name, fn in candidates:
             try:

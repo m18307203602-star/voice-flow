@@ -16,12 +16,14 @@ class AudioMuter:
     def __init__(self):
         self._muted_sessions: list = []  # [(volume_interface, previous_mute_state)]
         self._is_muted = False
+        self.enabled = True  # 用户可关闭以保持系统声音
 
     def mute_all(self) -> bool:
         """静默除本进程外的所有音频会话。返回是否成功"""
         if not _PYCAW_AVAILABLE:
             return False
-
+        if not self.enabled:
+            return False
         if self._is_muted:
             return True
 

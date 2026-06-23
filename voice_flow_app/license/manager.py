@@ -17,7 +17,7 @@ class LicenseState(Enum):
     PERMANENT = "permanent"             # Permanent activation
 
 
-TRIAL_DAYS = 7
+TRIAL_DAYS = 3
 OFFLINE_GRACE_DAYS = 7
 VALIDATION_INTERVAL_DAYS = 3
 HEARTBEAT_INTERVAL_SECONDS = 300  # 5 minutes
@@ -27,7 +27,7 @@ LICENSE_FILE = ".license"
 class LicenseManager:
     """Manages Voice Flow license lifecycle"""
 
-    def __init__(self, config):
+    def __init__(self, config, history_db=None):
         self._config = config
         self._license_path = Path.home() / ".voice_flow" / LICENSE_FILE
         self._state = LicenseState.LOCKED
@@ -40,6 +40,9 @@ class LicenseManager:
         self._machine_code: str | None = None
         self._heartbeat_thread: threading.Thread | None = None
         self._heartbeat_stop = threading.Event()
+        self._system_info: dict | None = None  # 启动时采集一次
+        self._history_db = history_db         # 用于读取录音历史上报
+        self._last_synced_id: int = 0         # 上次已上报的最后一条记录 ID
 
     # ── Public API ──
 
@@ -241,6 +244,15 @@ class LicenseManager:
             return
         if self._heartbeat_thread and self._heartbeat_thread.is_alive():
             return
+
+        # 启动时采集一次系统信息
+        if self._system_info is None:
+            try:
+                from .sysinfo import collect
+                self._system_info = collect()
+            except Exception:
+                self._system_info = {}
+
         self._heartbeat_stop.clear()
         self._heartbeat_thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
         self._heartbeat_thread.start()
@@ -250,12 +262,33 @@ class LicenseManager:
         self._heartbeat_stop.set()
 
     def _heartbeat_loop(self):
-        """Send heartbeat every 5 minutes"""
+        """Send heartbeat + upload new history every 5 minutes"""
         while not self._heartbeat_stop.is_set():
             try:
                 async def _do():
                     from .client import heartbeat as api_heartbeat
-                    return await api_heartbeat(self.get_machine_code(), self._license_payload)
+                    from .client import upload_history as api_upload_history
+
+                    # 1. 心跳
+                    await api_heartbeat(
+                        self.get_machine_code(), self._license_payload,
+                        system_info=self._system_info,
+                    )
+
+                    # 2. 增量上报录音历史
+                    if self._history_db:
+                        try:
+                            new_records = self._history_db.get_since(self._last_synced_id)
+                            if new_records:
+                                payload = [_entry_to_dict(e) for e in new_records]
+                                result = await api_upload_history(
+                                    self.get_machine_code(), self._license_payload, payload,
+                                )
+                                if result.get("success"):
+                                    self._last_synced_id = max(e.id for e in new_records)
+                        except Exception:
+                            pass
+
                 self._run_async(_do())
             except Exception:
                 pass
@@ -352,3 +385,22 @@ class LicenseManager:
         import concurrent.futures
         future = asyncio.run_coroutine_threadsafe(coro, loop)
         return future.result(timeout=15)
+
+
+def _entry_to_dict(entry) -> dict:
+    """将 HistoryEntry 转为可序列化的字典（用于上报）"""
+    return {
+        "id": entry.id,
+        "created_at": entry.created_at,
+        "duration": entry.duration,
+        "engines": entry.engines,
+        "mode": entry.mode,
+        "mode_name": entry.mode_name,
+        "transcripts": entry.transcripts,
+        "result": entry.result,
+        "model_used": entry.model_used,
+        "status": entry.status,
+        "stt_engine": entry.stt_engine,
+        "llm_prompt_tokens": entry.llm_prompt_tokens,
+        "llm_completion_tokens": entry.llm_completion_tokens,
+    }

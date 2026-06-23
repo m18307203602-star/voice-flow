@@ -47,10 +47,11 @@ class VoiceFlowSession(QObject):
     comparison_ready = Signal(dict, float, float)  # (comparison_data, stage1_elapsed_ms, total_elapsed_ms)
     error_occurred = Signal(str)        # 错误信息
 
-    def __init__(self, config, prompts):
+    def __init__(self, config, prompts, dictionary=None):
         super().__init__()
         self._config = config
         self._prompts = prompts
+        self._dictionary = dictionary  # DictionaryManager or None
         self._state = SessionState.IDLE
         self._recorder: Optional[Recorder] = None
         self._stt_engines: dict = {}     # {engine_name: STT instance}
@@ -58,6 +59,7 @@ class VoiceFlowSession(QObject):
         self._llm: Optional[LLMProcessor] = None
         self.last_llm_tokens: dict = {}
         self._lock = threading.Lock()
+        self._generation = 0  # 代际计数器：每次 start_recording +1，防止旧录音结果污染新录音
 
     @property
     def state(self) -> SessionState:
@@ -77,8 +79,12 @@ class VoiceFlowSession(QObject):
             self.error_occurred.emit("请先在设置中填写至少一个 LLM 密钥")
             return
 
+        # ★ 递增代际计数器，使上一轮未完成的 background LLM 线程结果作废
+        self._generation += 1
+
         stt_mode = self._config.stt_mode
-        log.info("开始录音，STT 模式: %s，处理模式: %s", stt_mode, self._config.selected_mode)
+        log.info("开始录音，STT 模式: %s，处理模式: %s，代际: %d",
+                 stt_mode, self._config.selected_mode, self._generation)
 
         # 确定要使用的 STT 引擎
         if stt_mode == "short_first":
@@ -291,7 +297,19 @@ class VoiceFlowSession(QObject):
         self.status_message.emit(f"LLM: {mode_cfg['name']} 编排中...")
 
         # ★ LLM 异步执行：不阻塞主线程，完成后自动回调
+        my_generation = self._generation  # 捕获当前代际
+
         def _run_llm_then_emit():
+            # ★ 代际检查：如果已经开始了新一轮录音，放弃本次结果
+            if self._generation != my_generation:
+                log.warning("LLM 线程代际过期 (my=%d, current=%d)，丢弃结果",
+                           my_generation, self._generation)
+                try:
+                    os.unlink(wav_path)
+                except OSError:
+                    pass
+                return
+
             t_total_start = time.time()
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
@@ -311,6 +329,16 @@ class VoiceFlowSession(QObject):
             finally:
                 loop.close()
 
+            # ★ 再次代际检查：LLM 可能耗时很久，期间可能开始了新录音
+            if self._generation != my_generation:
+                log.warning("LLM 线程代际过期 (my=%d, current=%d)，丢弃结果",
+                           my_generation, self._generation)
+                try:
+                    os.unlink(wav_path)
+                except OSError:
+                    pass
+                return
+
             if llm_result is None:
                 best = next((v for v in engine_results.values()
                              if v and not v.startswith("[错误]")), "")
@@ -322,9 +350,9 @@ class VoiceFlowSession(QObject):
                 "prompt_tokens": llm_result.prompt_tokens,
                 "completion_tokens": llm_result.completion_tokens,
             }
-            log.info("LLM 处理完成，模型: %s，输出 %d 字，token: %d+%d",
+            log.info("LLM 处理完成，模型: %s，输出 %d 字，token: %d+%d，代际: %d",
                      llm_result.model_used, len(llm_result.text),
-                     llm_result.prompt_tokens, llm_result.completion_tokens)
+                     llm_result.prompt_tokens, llm_result.completion_tokens, my_generation)
 
             try:
                 os.unlink(wav_path)
@@ -334,6 +362,12 @@ class VoiceFlowSession(QObject):
             best_transcript = next(
                 (v for v in engine_results.values()
                  if v and not v.startswith("[错误]")), "")
+
+            # ★ 第三次代际检查：emit 前最后确认
+            if self._generation != my_generation:
+                log.warning("LLM 线程代际过期 (my=%d, current=%d)，丢弃结果",
+                           my_generation, self._generation)
+                return
 
             # 跨线程 emit → PySide6 自动 QueuedConnection
             self.result_ready.emit(
@@ -430,6 +464,13 @@ class VoiceFlowSession(QObject):
         if not input_text.strip():
             return LLMResult(text="", model_used="无有效输入"), {}, stage1_elapsed
 
+        # ── 用户词库替换（STT 后、LLM 前） ──
+        if self._dictionary and self._dictionary.enabled and self._dictionary.entries:
+            before = input_text
+            input_text = self._dictionary.apply(input_text)
+            if input_text != before:
+                log.info("词库替换完成，文本长度: %d → %d", len(before), len(input_text))
+
         # ── 系统提示词指纹校验（运行时二次确认） ──
         _sys = mode_cfg.get("system", "")
         if _sys:
@@ -479,15 +520,17 @@ class VoiceFlowSession(QObject):
                 # 所有模型全部失败 → 降级链兜底
                 log.warning("对比模式所有模型失败，走降级链兜底")
                 primary_result = await self._llm.process(
-                    input_text, mode_cfg["system"], mode_cfg["temperature"])
+                    input_text, mode_cfg["system"], mode_cfg["temperature"],
+                    model_name=primary_model)
 
             log.info("阶段二完成: 对比=%s, 主输出=%s",
                      list(comp_data.keys()), primary_result.model_used)
             return primary_result, comp_data, stage1_elapsed
         else:
-            # 仅主模型（降级链兜底）
+            # 仅主模型（指定模型优先，失败走降级链兜底）
             primary_result = await self._llm.process(
-                input_text, mode_cfg["system"], mode_cfg["temperature"])
+                input_text, mode_cfg["system"], mode_cfg["temperature"],
+                model_name=primary_model)
             return primary_result, {}, stage1_elapsed
 
     def _save_wav(self, audio) -> str:
@@ -502,7 +545,12 @@ class VoiceFlowSession(QObject):
         return tmp.name
 
     def cancel(self):
-        """取消当前操作，回到 IDLE"""
+        """取消当前操作，回到 IDLE
+
+        RECORDING 状态：停录音 + 停 STT 引擎 → IDLE
+        PROCESSING 状态：只增加代际计数器让 LLM 线程结果作废，不强行改状态
+        （LLM 线程完成时会自己设 IDLE）
+        """
         if self._state == SessionState.RECORDING:
             if self._recorder:
                 self._recorder.stop()
@@ -517,5 +565,10 @@ class VoiceFlowSession(QObject):
                     pass
             with self._lock:
                 self._stt_engines.clear()
-        self._set_state(SessionState.IDLE)
-        self.status_message.emit("已取消")
+            self._set_state(SessionState.IDLE)
+            self.status_message.emit("已取消")
+        elif self._state == SessionState.PROCESSING:
+            # LLM 正在后台跑，不让它污染下一轮录音
+            self._generation += 1
+            log.info("取消 PROCESSING：代际递增至 %d，旧 LLM 结果将被丢弃", self._generation)
+            self.status_message.emit("已取消")

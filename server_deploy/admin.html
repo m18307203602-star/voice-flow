@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voice Flow — License Admin</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,Segoe UI,sans-serif;background:#1e1e2e;color:#cdd6f4;min-height:100vh}
+.container{max-width:680px;margin:0 auto;padding:40px 20px}
+h1{font-size:24px;text-align:center;margin-bottom:8px}
+.subtitle{text-align:center;color:#a6adc8;font-size:13px;margin-bottom:32px}
+
+.card{background:#313244;border-radius:12px;padding:24px;margin-bottom:20px}
+.card h2{font-size:16px;margin-bottom:16px;color:#cba6f7}
+.card label{display:block;font-size:13px;color:#a6adc8;margin-bottom:6px}
+.card input,.card select{width:100%;padding:10px 14px;background:#1e1e2e;border:1px solid #45475a;border-radius:8px;color:#cdd6f4;font-size:14px;margin-bottom:14px;outline:none}
+.card input:focus,.card select:focus{border-color:#cba6f7}
+.card button{width:100%;padding:12px;border:none;border-radius:8px;font-size:15px;font-weight:bold;cursor:pointer}
+.btn-primary{background:#a6e3a1;color:#1e1e2e}
+.btn-primary:hover{opacity:0.9}
+.btn-secondary{background:#45475a;color:#cdd6f4}
+.btn-secondary:hover{background:#585b70}
+.btn-danger{background:#f38ba8;color:#1e1e2e}
+.btn-danger:hover{opacity:0.9}
+
+.row{display:flex;gap:12px}.row>*{flex:1}
+
+.msg{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px;display:none}
+.msg-success{background:#1a3320;color:#a6e3a1;border:1px solid #2d5a35}
+.msg-error{background:#331a20;color:#f38ba8;border:1px solid #5a2d35}
+
+.result{background:#1e1e2e;padding:16px;border-radius:8px;margin-top:14px;display:none}
+.result .key{font-family:Consolas,monospace;font-size:18px;color:#89b4fa;word-break:break-all}
+.result .expiry{font-size:13px;color:#a6adc8;margin-top:8px}
+.copy-btn{margin-top:10px;padding:6px 16px;font-size:12px}
+
+table{width:100%;font-size:13px;border-collapse:collapse}
+th,td{padding:10px 12px;text-align:left;border-bottom:1px solid #45475a}
+th{color:#a6adc8;font-size:12px}
+td{max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.badge{padding:2px 8px;border-radius:4px;font-size:11px}
+.badge-active{background:#1a3320;color:#a6e3a1}
+.badge-expired{background:#331a20;color:#f38ba8}
+.badge-banned{background:#33201a;color:#fab387}
+
+.api-url{color:#89b4fa;font-size:13px;word-break:break-all}
+.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.status-ok{background:#a6e3a1}
+.status-fail{background:#f38ba8}
+
+/* Modal overlay */
+.modal-overlay{display:none;position:fixed;z-index:100;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,0.7)}
+.modal-overlay.active{display:flex;align-items:center;justify-content:center}
+.modal-box{background:#313244;border-radius:12px;padding:24px;max-width:800px;width:90%;max-height:80vh;overflow-y:auto;position:relative}
+.modal-box h2{font-size:16px;color:#cba6f7;margin-bottom:12px}
+.modal-close{position:absolute;top:12px;right:16px;background:none;border:none;color:#a6adc8;font-size:20px;cursor:pointer;padding:4px 8px}
+.modal-close:hover{color:#f38ba8}
+
+/* System info tooltip */
+.sys-dot{display:inline-block;width:18px;height:18px;line-height:18px;text-align:center;border-radius:50%;background:#45475a;color:#89b4fa;font-size:11px;cursor:pointer;font-weight:bold}
+.sys-dot:hover{background:#585b70}
+.sys-dot.has-info{background:#1a3320;color:#a6e3a1}
+
+/* History table */
+.history-table{width:100%;font-size:12px;border-collapse:collapse;margin-top:8px}
+.history-table th,.history-table td{padding:6px 8px;text-align:left;border-bottom:1px solid #45475a;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.history-table th{color:#a6adc8;font-size:11px;position:sticky;top:0;background:#313244}
+.history-result{max-width:400px;white-space:normal!important;font-size:11px;line-height:1.4}
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>🔑 Voice Flow License</h1>
+<p class="subtitle">授权管理后台 · <a href="#" onclick="logout();return false" style="color:#f38ba8">退出</a></p>
+
+<!-- Login -->
+<div class="card" id="loginCard">
+  <h2>登录</h2>
+  <div class="msg" id="loginMsg"></div>
+  <label>管理密码</label>
+  <input type="password" id="password" placeholder="输入管理密码" onkeydown="if(event.key==='Enter')login()">
+  <button class="btn-primary" onclick="login()">登 录</button>
+</div>
+
+<!-- Main panel (hidden until login) -->
+<div id="mainPanel" style="display:none">
+
+  <!-- Generate -->
+  <div class="card">
+    <h2>生成 License Key</h2>
+    <div class="msg" id="genMsg"></div>
+    <label>客户机器码</label>
+    <input type="text" id="machineCode" placeholder="客户复制的 32 位机器码">
+    <div class="row">
+      <div>
+        <label>时长</label>
+        <select id="duration">
+          <option value="3">3 天</option>
+          <option value="7">7 天</option>
+          <option value="30">1 个月</option>
+          <option value="90">3 个月</option>
+          <option value="180">6 个月</option>
+          <option value="365" selected>1 年</option>
+          <option value="730">2 年</option>
+          <option value="9999">永久</option>
+        </select>
+      </div>
+      <div>
+        <label>备注（客户名等）</label>
+        <input type="text" id="notes" placeholder="可选">
+      </div>
+    </div>
+    <button class="btn-primary" onclick="generate()">生成 License Key</button>
+    <div class="result" id="genResult">
+      <div class="key" id="genKey"></div>
+      <div class="expiry" id="genExpiry"></div>
+      <button class="copy-btn btn-secondary" onclick="copyKey()">📋 复制</button>
+    </div>
+  </div>
+
+  <!-- Trial Cards -->
+  <div class="card">
+    <h2>🎫 生成试用卡</h2>
+    <div class="msg" id="tcMsg"></div>
+    <div class="row">
+      <div>
+        <label>数量</label>
+        <select id="tcCount">
+          <option value="1">1 张</option>
+          <option value="5" selected>5 张</option>
+          <option value="10">10 张</option>
+          <option value="20">20 张</option>
+          <option value="50">50 张</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn-secondary" onclick="generateTrialCards()">生成试用卡</button>
+    <div class="result" id="tcResult" style="display:none">
+      <div style="color:#a6adc8;font-size:12px;margin-bottom:8px">过期时间: <span id="tcExpiry"></span></div>
+      <div id="tcCards" style="font-family:Consolas,monospace;font-size:13px;color:#89b4fa;line-height:1.8"></div>
+      <button class="copy-btn btn-secondary" onclick="copyTrialCards()">📋 复制全部</button>
+    </div>
+  </div>
+
+  <!-- Machines list -->
+  <div class="card">
+    <h2>已授权设备</h2>
+    <div id="machineList">点击刷新加载...</div>
+    <button class="btn-secondary" style="margin-top:12px" onclick="loadMachines()">🔄 刷新</button>
+  </div>
+
+  <!-- Server status -->
+  <div class="card" style="text-align:center">
+    <span class="status-dot status-ok" id="statusDot"></span>
+    <span class="api-url" id="apiUrl"></span>
+  </div>
+</div>
+
+</div>
+
+<!-- System Info Modal -->
+<div class="modal-overlay" id="sysModal">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeSysModal()">✕</button>
+    <h2>🖥 系统信息</h2>
+    <div id="sysModalContent"></div>
+  </div>
+</div>
+
+<!-- History Modal -->
+<div class="modal-overlay" id="histModal">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeHistModal()">✕</button>
+    <h2>📝 录音历史 — <span id="histMachine"></span></h2>
+    <div id="histContent">加载中...</div>
+  </div>
+</div>
+
+<script>
+let TOKEN = localStorage.getItem('vf_admin_token') || '';
+let API = window.location.origin;
+
+// 如果有已保存的 token，自动跳过登录
+if (TOKEN) {
+  document.getElementById('loginCard').style.display = 'none';
+  document.getElementById('mainPanel').style.display = 'block';
+  loadMachines();
+}
+
+function showMsg(id, text, type) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = 'msg msg-' + type;
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 5000);
+}
+
+async function api(method, path, body) {
+  const opts = {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+  };
+  if (TOKEN) opts.headers['Authorization'] = 'Bearer ' + TOKEN;
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(API + path, opts);
+  if (r.status === 401) {
+    // Token 失效（被顶掉等），清除并回到登录页
+    localStorage.removeItem('vf_admin_token');
+    TOKEN = '';
+    document.getElementById('loginCard').style.display = 'block';
+    document.getElementById('mainPanel').style.display = 'none';
+    throw new Error('登录已过期，请重新登录');
+  }
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+async function login() {
+  const pw = document.getElementById('password').value;
+  try {
+    const r = await api('POST', '/api/admin/login', { password: pw });
+    if (!r.token) { showMsg('loginMsg', '密码错误', 'error'); return; }
+    TOKEN = r.token;
+    localStorage.setItem('vf_admin_token', r.token);
+    document.getElementById('loginCard').style.display = 'none';
+    document.getElementById('mainPanel').style.display = 'block';
+    loadMachines();
+  } catch (e) {
+    showMsg('loginMsg', '连接失败: ' + e.message, 'error');
+  }
+}
+
+function logout() {
+  localStorage.removeItem('vf_admin_token');
+  TOKEN = '';
+  document.getElementById('loginCard').style.display = 'block';
+  document.getElementById('mainPanel').style.display = 'none';
+  document.getElementById('password').value = '';
+}
+
+async function generate() {
+  const mc = document.getElementById('machineCode').value.trim();
+  if (!mc) { showMsg('genMsg', '请输入机器码', 'error'); return; }
+
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = '生成中...';
+
+  try {
+    const r = await api('POST', '/api/admin/generate', {
+      machine_code: mc,
+      duration_days: parseInt(document.getElementById('duration').value),
+      notes: document.getElementById('notes').value,
+    });
+    document.getElementById('genKey').textContent = r.license_key;
+    document.getElementById('genExpiry').textContent = '过期时间: ' + r.expires_at + ' (UTC)';
+    document.getElementById('genResult').style.display = 'block';
+    showMsg('genMsg', '生成成功！', 'success');
+  } catch (e) {
+    showMsg('genMsg', '失败: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '生成 License Key';
+  }
+}
+
+function copyKey() {
+  const key = document.getElementById('genKey').textContent;
+  copyText(key);
+  showMsg('genMsg', '已复制到剪贴板', 'success');
+}
+
+async function loadMachines() {
+  try {
+    const r = await api('GET', '/api/admin/machines?limit=50');
+    const data = r || [];
+    if (data.length === 0) {
+      document.getElementById('machineList').innerHTML = '<p style="color:#a6adc8;text-align:center;padding:20px">暂无设备</p>';
+      return;
+    }
+    let html = '<table><thead><tr><th>机器码</th><th>License Key</th><th>首次激活</th><th>过期</th><th>在线</th><th>版本</th><th>系统</th><th>次数</th><th>历史</th><th>状态</th><th>备注</th><th>操作</th></tr></thead><tbody>';
+    for (const m of data) {
+      const expired = m.latest_expiry && new Date(m.latest_expiry) < new Date();
+      const badge = m.banned ? '<span class="badge badge-banned">封禁</span>'
+                  : expired ? '<span class="badge badge-expired">过期</span>'
+                  : '<span class="badge badge-active">有效</span>';
+      const mc = m.machine_code.substring(0, 10) + '...';
+      const firstSeen = m.first_seen ? new Date(m.first_seen + 'Z').toLocaleDateString('zh-CN') : '-';
+      const actCount = m.activation_count || 0;
+      const actColor = actCount > 5 ? 'color:#f38ba8;font-weight:bold' : '';
+      const histCount = m.history_count || 0;
+      const histStyle = histCount > 0 ? 'color:#a6e3a1;font-weight:bold;cursor:pointer;text-decoration:underline' : 'color:#6c7086';
+      const histOnClick = histCount > 0 ? 'onclick="loadHistory(\'' + escAttr(m.machine_code) + '\')"' : '';
+
+      // Online status from heartbeat
+      const hb = m.last_heartbeat;
+      let onlineDot = '';
+      if (!hb) {
+        onlineDot = '<span style="color:#6c7086">⬤</span>';
+      } else {
+        const hbTime = new Date(hb + 'Z');
+        const minsAgo = (new Date() - hbTime) / 60000;
+        if (minsAgo < 10) {
+          onlineDot = '<span style="color:#a6e3a1" title="在线">⬤</span>';
+        } else if (minsAgo < 1440) {
+          onlineDot = '<span style="color:#f9e2af" title="' + Math.round(minsAgo) + ' 分钟前">⬤</span>';
+        } else {
+          onlineDot = '<span style="color:#6c7086" title="离线 >1 天">⬤</span>';
+        }
+      }
+
+      // System info dot
+      const si = m.system_info;
+      let sysDot = '<span class="sys-dot" title="无系统信息">-</span>';
+      // Parse client version from system_info
+      let clientVer = '-';
+      let verColor = '#6c7086';
+      if (si) {
+        try {
+          const info = JSON.parse(si);
+          if (info.client_version) {
+            clientVer = 'v' + info.client_version;
+            verColor = '#89b4fa';
+          } else {
+            clientVer = '旧版';
+            verColor = '#f9e2af';
+          }
+        } catch(e) {}
+      }
+      if (si) {
+        sysDot = `<span class="sys-dot has-info" title="点击查看系统信息" onclick="showSysInfo('${escAttr(m.machine_code)}', this)" data-si="${escAttr(si)}">ⓘ</span>`;
+      }
+
+      html += `<tr>
+        <td title="${m.machine_code}">${mc}</td>
+        <td style="font-size:11px">${m.license_key || '-'}</td>
+        <td>${firstSeen}</td>
+        <td>${m.latest_expiry ? new Date(m.latest_expiry).toLocaleDateString('zh-CN') : '-'}</td>
+        <td>${onlineDot}</td>
+        <td style="font-size:11px;color:${verColor}">${clientVer}</td>
+        <td style="text-align:center">${sysDot}</td>
+        <td style="${actColor}">${actCount}</td>
+        <td style="text-align:center;${histStyle}" ${histOnClick}>${histCount > 0 ? '📝 ' + histCount : '-'}</td>
+        <td>${badge}</td>
+        <td><input value="${escHtml(m.notes || '')}" style="width:80px;background:#1e1e2e;color:#cdd6f4;border:1px solid #45475a;border-radius:4px;padding:2px 6px;font-size:12px" onblur="updateNotes('${escAttr(m.machine_code)}', this.value)" onkeydown="if(event.key==='Enter')this.blur()"></td>
+        <td style="white-space:nowrap">${m.banned
+          ? `<button class="btn-secondary" style="padding:4px 8px;font-size:11px" onclick="unban('${m.machine_code}')">解封</button>`
+          : `<button class="btn-danger" style="padding:4px 8px;font-size:11px" onclick="ban('${m.machine_code}')">封禁</button>`
+        } <button class="btn-secondary" style="padding:4px 8px;font-size:11px" onclick="loadHistory('${escAttr(m.machine_code)}')">📝</button></td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    document.getElementById('machineList').innerHTML = html;
+  } catch (e) {
+    document.getElementById('machineList').innerHTML = '<p style="color:#f38ba8">加载失败</p>';
+  }
+}
+
+async function ban(mc) {
+  if (!confirm('确定封禁此设备？')) return;
+  try {
+    await api('POST', '/api/admin/ban?machine_code=' + encodeURIComponent(mc));
+    loadMachines();
+  } catch (e) { alert('失败: ' + e.message); }
+}
+
+async function unban(mc) {
+  try {
+    await api('POST', '/api/admin/unban?machine_code=' + encodeURIComponent(mc));
+    loadMachines();
+  } catch (e) { alert('失败: ' + e.message); }
+}
+
+async function generateTrialCards() {
+  const count = parseInt(document.getElementById('tcCount').value);
+  try {
+    const r = await api('POST', '/api/admin/trial-cards', { count });
+    document.getElementById('tcExpiry').textContent = new Date(r.expires_at).toLocaleDateString('zh-CN');
+    document.getElementById('tcCards').innerHTML = r.cards.join('<br>');
+    document.getElementById('tcResult').style.display = 'block';
+    window._tcCards = r.cards;
+    showMsg('tcMsg', `Generated ${r.cards.length} trial card(s)`, 'success');
+  } catch (e) {
+    showMsg('tcMsg', 'Failed: ' + e.message, 'error');
+  }
+}
+
+function copyTrialCards() {
+  if (window._tcCards) {
+    copyText(window._tcCards.join('\n'));
+    showMsg('tcMsg', 'Copied to clipboard', 'success');
+  }
+}
+
+// 通用复制函数：兼容 HTTP（非安全上下文）
+function copyText(text) {
+  // 优先 Clipboard API（HTTPS/localhost）
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  ta.style.top = '-9999px';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try {
+    document.execCommand('copy');
+  } catch (e) {
+    // ignore
+  }
+  document.body.removeChild(ta);
+}
+
+// HTML 转义（防 XSS）
+function escHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+function escAttr(str) {
+  return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// 更新备注
+async function updateNotes(machineCode, notes) {
+  try {
+    await api('POST', '/api/admin/machines/notes?machine_code=' + encodeURIComponent(machineCode), { notes });
+  } catch (e) {
+    // 静默失败，不打扰用户
+  }
+}
+
+// Show API URL in footer
+document.getElementById('apiUrl').textContent = API;
+
+// System info modal
+function showSysInfo(mc, el) {
+  const si = el.getAttribute('data-si');
+  document.getElementById('sysModalContent').innerHTML = '<p style="color:#a6adc8">无系统信息</p>';
+  if (si) {
+    try {
+      const info = JSON.parse(si);
+      let html = '<table style="width:100%;font-size:13px">';
+      const labels = {
+        os: '操作系统', os_version: '系统版本', os_arch: '架构',
+        cpu_model: 'CPU 型号', cpu_cores: 'CPU 核心数(logical)',
+        cpu_cores_physical: 'CPU 物理核心', cpu_cores_logical: 'CPU 逻辑核心',
+        cpu_freq_mhz: 'CPU 频率(Max)', cpu_freq_current_mhz: 'CPU 频率(当前)',
+        ram_total_gb: '内存 总量(GB)', ram_available_gb: '内存 可用(GB)',
+        ram_used_percent: '内存 使用率', swap_total_gb: '交换 总量(GB)',
+        swap_used_percent: '交换 使用率',
+        hostname: '主机名', python_version: 'Python 版本',
+        local_ip: '局域网 IP', public_ip: '公网 IP', location: '地理位置',
+        country: '国家/地区', region: '省份', city: '城市', isp: '运营商',
+        net_bytes_sent: '网络 已发送', net_bytes_recv: '网络 已接收',
+        battery_percent: '电池 电量', battery_plugged: '电池 已插电',
+        battery_secs_left: '电池 剩余秒数',
+        boot_time: '开机时间戳', uptime_hours: '运行时长(小时)',
+        logged_in_users: '当前登录用户', process_count: '进程数',
+        client_version: '客户端版本',
+      };
+      html += '<tr><td style="color:#a6adc8;padding:4px 8px">机器码</td><td style="padding:4px 8px">' + escHtml(mc.substring(0, 16)) + '...</td></tr>';
+
+      const shown = new Set();
+      // 先显示有标签的字段
+      for (const [k, v] of Object.entries(labels)) {
+        if (info[k] !== undefined) {
+          shown.add(k);
+          let val = info[k];
+          html += '<tr><td style="color:#a6adc8;padding:4px 8px">' + v + '</td><td style="padding:4px 8px">' + escHtml(String(val)) + '</td></tr>';
+        }
+      }
+      // 然后展示任何未标注的动态字段 (GPU, 磁盘, 音频等)
+      const ordered = Object.keys(info).sort();
+      for (const k of ordered) {
+        if (shown.has(k) || k.startsWith('_')) continue;
+        let val = info[k];
+        if (val === undefined || val === '' || val === null) continue;
+        // 美化 key 名: disk_C_total_gb → 磁盘 C: 总量(GB)
+        let label = k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        // ponytail: 常见模式替换
+        label = label.replace(/^Disk (.+) total gb$/, '磁盘 $1 总量(GB)');
+        label = label.replace(/^Disk (.+) free gb$/, '磁盘 $1 可用(GB)');
+        label = label.replace(/^Disk (.+) used percent$/, '磁盘 $1 使用率');
+        label = label.replace(/^Net (.+) ip$/, '网卡 $1 IP');
+        label = label.replace(/^Net (.+) mac$/, '网卡 $1 MAC');
+        label = label.replace(/^Audio in(\d+)$/, '音频输入 $1');
+        label = label.replace(/^Audio out(\d+)$/, '音频输出 $1');
+        label = label.replace(/^Gpu(\d+) (.+)$/, 'GPU$1 $2');
+        label = label.replace(/^Temp (.+)$/, '温度 $1');
+        html += '<tr><td style="color:#a6adc8;padding:4px 8px;font-size:11px">' + escHtml(label) + '</td><td style="padding:4px 8px;font-size:11px">' + escHtml(String(val)) + '</td></tr>';
+      }
+      html += '</table>';
+      document.getElementById('sysModalContent').innerHTML = html;
+    } catch(e) {
+      document.getElementById('sysModalContent').innerHTML = '<p style="color:#a6adc8">' + escHtml(si) + '</p>';
+    }
+  }
+  document.getElementById('sysModal').classList.add('active');
+}
+
+function closeSysModal() {
+  document.getElementById('sysModal').classList.remove('active');
+}
+
+// History modal
+async function loadHistory(mc) {
+  document.getElementById('histMachine').textContent = mc.substring(0, 12) + '...';
+  document.getElementById('histContent').innerHTML = '<p style="color:#a6adc8">加载中...</p>';
+  document.getElementById('histModal').classList.add('active');
+
+  try {
+    const r = await api('GET', '/api/admin/history?machine_code=' + encodeURIComponent(mc) + '&limit=50');
+    const records = r.records || [];
+    if (records.length === 0) {
+      document.getElementById('histContent').innerHTML = '<p style="color:#a6adc8;text-align:center;padding:20px">暂无录音记录（客户端尚未上传或刚启动）</p>';
+      return;
+    }
+    let html = '<p style="color:#a6adc8;font-size:12px;margin-bottom:8px">共 ' + r.total + ' 条记录，显示最近 ' + records.length + ' 条</p>';
+    html += '<table class="history-table"><thead><tr><th>时间</th><th>时长</th><th>模式</th><th>引擎</th><th>模型</th><th>结果</th><th>上传</th></tr></thead><tbody>';
+    for (const rec of records) {
+      const dur = rec.duration ? Math.round(rec.duration) + 's' : '-';
+      html += '<tr>' +
+        '<td>' + (rec.created_at || '-').substring(0, 16) + '</td>' +
+        '<td>' + dur + '</td>' +
+        '<td>' + escHtml(rec.mode_name || '-') + '</td>' +
+        '<td>' + escHtml(rec.stt_engine || '-') + '</td>' +
+        '<td>' + escHtml(rec.model_used || '-') + '</td>' +
+        '<td class="history-result">' + escHtml((rec.result || '').substring(0, 150)) + '</td>' +
+        '<td>' + (rec.uploaded_at || '-').substring(0, 16) + '</td>' +
+        '</tr>';
+    }
+    html += '</tbody></table>';
+    document.getElementById('histContent').innerHTML = html;
+  } catch (e) {
+    document.getElementById('histContent').innerHTML = '<p style="color:#f38ba8">加载失败: ' + escHtml(e.message) + '</p>';
+  }
+}
+
+function closeHistModal() {
+  document.getElementById('histModal').classList.remove('active');
+}
+
+// Close modals on overlay click
+document.getElementById('sysModal').addEventListener('click', function(e) {
+  if (e.target === this) closeSysModal();
+});
+document.getElementById('histModal').addEventListener('click', function(e) {
+  if (e.target === this) closeHistModal();
+});
+
+// Ping check
+fetch(API + '/api/ping')
+  .then(r => r.json())
+  .then(d => {
+    document.getElementById('statusDot').className = 'status-dot status-ok';
+  })
+  .catch(() => {
+    document.getElementById('statusDot').className = 'status-dot status-fail';
+  });
+</script>
+</body>
+</html>

@@ -16,7 +16,7 @@ from PySide6.QtMultimedia import QSoundEffect
 from PySide6.QtCore import QUrl
 
 from .history_panel import HistoryPanel
-from .settings_dialog import SettingsDialog
+from .settings_dialog import SettingsPage
 from .voiceprint_widget import VoiceprintWidget
 from .sidebar import SidebarWidget
 from .stats_page import StatsPage
@@ -168,7 +168,7 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
 /* === 工具提示 === */
 QToolTip {
     background-color: #1c1c2e;
-    color: #e4e4f0;
+    color: #ffffff;
     border: 1px solid #2a2a3e;
     border-radius: 8px;
     padding: 6px 10px;
@@ -194,6 +194,183 @@ QMenu::item:selected {
 QMenu::separator {
     height: 1px;
     background: #2a2a3e;
+    margin: 4px 12px;
+}
+"""
+
+# ── 白天模式样式表 ──
+LIGHT_MAIN_STYLE = """
+/* === 基底 === */
+QMainWindow {
+    background-color: #f5f5f5;
+}
+QWidget {
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    color: #1e1e2e;
+}
+
+/* === 标签 === */
+QLabel {
+    color: #1e1e2e;
+    font-size: 13px;
+}
+
+/* === 按钮 === */
+QPushButton {
+    background-color: #ffffff;
+    color: #1e1e2e;
+    border: 1px solid #d0d0d0;
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    min-width: 80px;
+}
+QPushButton:hover {
+    background-color: #f0f0f0;
+    border-color: #b0b0b0;
+}
+QPushButton:pressed {
+    background-color: #e8e8e8;
+}
+QPushButton:disabled {
+    background-color: #f5f5f5;
+    color: #999999;
+}
+
+/* === 录音按钮 === */
+QPushButton#recordBtn {
+    background-color: #7c5cfc;
+    color: #ffffff;
+    font-weight: 600;
+    font-size: 15px;
+    padding: 12px 32px;
+    border: none;
+    border-radius: 12px;
+    min-width: 180px;
+}
+QPushButton#recordBtn:hover {
+    background-color: #9170ff;
+}
+QPushButton#recordBtn:pressed {
+    background-color: #6a4de0;
+}
+QPushButton#recordBtn.recording {
+    background-color: #f43f5e;
+    color: #ffffff;
+}
+
+/* === 复选框 / 单选框 === */
+QRadioButton, QCheckBox {
+    color: #1e1e2e;
+    font-size: 13px;
+    spacing: 8px;
+}
+QRadioButton::indicator {
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+}
+
+/* === 分组框 === */
+QGroupBox {
+    color: #555555;
+    font-weight: 600;
+    border: 1px solid #d0d0d0;
+    border-radius: 12px;
+    margin-top: 14px;
+    padding-top: 18px;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 14px;
+    padding: 0 6px;
+}
+
+/* === 分割器 === */
+QSplitter::handle {
+    background-color: #d0d0d0;
+    width: 2px;
+}
+QSplitter::handle:hover {
+    background-color: #7c5cfc;
+}
+
+/* === 进度条 === */
+QProgressBar {
+    border: 1px solid #d0d0d0;
+    border-radius: 6px;
+    background-color: #e8e8e8;
+    height: 6px;
+    text-align: center;
+}
+QProgressBar::chunk {
+    background-color: #4ade80;
+    border-radius: 5px;
+}
+
+/* === 滚动条 === */
+QScrollBar:vertical {
+    width: 8px;
+    background: transparent;
+    margin: 4px 0;
+}
+QScrollBar::handle:vertical {
+    background: #c0c0c0;
+    border-radius: 4px;
+    min-height: 24px;
+}
+QScrollBar::handle:vertical:hover {
+    background: #7c5cfc;
+}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0;
+}
+QScrollBar:horizontal {
+    height: 8px;
+    background: transparent;
+}
+QScrollBar::handle:horizontal {
+    background: #c0c0c0;
+    border-radius: 4px;
+    min-width: 24px;
+}
+QScrollBar::handle:horizontal:hover {
+    background: #7c5cfc;
+}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+    width: 0;
+}
+
+/* === 工具提示 === */
+QToolTip {
+    background-color: #ffffff;
+    color: #1e1e2e;
+    border: 1px solid #d0d0d0;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 12px;
+}
+
+/* === 菜单 === */
+QMenu {
+    background-color: #ffffff;
+    color: #1e1e2e;
+    border: 1px solid #d0d0d0;
+    border-radius: 12px;
+    padding: 6px;
+}
+QMenu::item {
+    padding: 8px 32px 8px 16px;
+    border-radius: 6px;
+    margin: 2px 4px;
+}
+QMenu::item:selected {
+    background-color: #e8e8f8;
+}
+QMenu::separator {
+    height: 1px;
+    background: #d0d0d0;
     margin: 4px 12px;
 }
 """
@@ -325,7 +502,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Voice Flow")
         self.setMinimumSize(800, 600)
         self.resize(1000, 750)
-        self.setStyleSheet(MAIN_STYLE)
+        self._apply_stylesheet()
 
         self._setup_ui()
         self._connect_signals()
@@ -350,6 +527,7 @@ class MainWindow(QMainWindow):
 
         # ── Page 0: 首页（统计页） ──
         self._stats_page = StatsPage(self._history_db)
+        self._stats_page.settings_clicked.connect(lambda: self._stack.setCurrentIndex(4))
         self._stack.addWidget(self._stats_page)
 
         # ── Page 1: 控制台（原首页） ──
@@ -368,6 +546,12 @@ class MainWindow(QMainWindow):
         self._dict_widget.set_history_db(self._history_db)
         self._dict_widget.dictionary_changed.connect(self._on_dictionary_changed)
         self._stack.addWidget(self._dict_widget)
+
+        # ── Page 4: 设置 ──
+        self._settings_page = SettingsPage(self._config, self)
+        self._settings_page.theme_changed.connect(self._on_theme_changed)
+        self._settings_page.mute_toggled.connect(self._on_mute_toggled)
+        self._stack.addWidget(self._settings_page)
 
     def _create_home_page(self):
         """创建首页内容（所有现有控件 + 最近记录预览）"""
@@ -462,9 +646,6 @@ class MainWindow(QMainWindow):
         top_row.addWidget(self._primary_combo)
 
         top_row.addStretch()
-        self._btn_settings = QPushButton("⚙ 设置")
-        self._btn_settings.setFixedWidth(100)
-        top_row.addWidget(self._btn_settings)
 
         layout.addLayout(top_row)
 
@@ -494,7 +675,7 @@ class MainWindow(QMainWindow):
         self._level_bar.setValue(0)
         self._level_bar.setFixedWidth(120)
         self._level_bar.setFixedHeight(8)
-        ctrl_row.addWidget(QLabel("电平"))
+        ctrl_row.addWidget(QLabel("音量检测"))
         ctrl_row.addWidget(self._level_bar)
 
         layout.addLayout(ctrl_row)
@@ -540,9 +721,12 @@ class MainWindow(QMainWindow):
         self._voiceprint = VoiceprintWidget()
 
         # ── 最近记录预览（5 条） ──
+        recent_section = QVBoxLayout()
+        recent_section.setSpacing(0)
         recent_label = QLabel("📌 最近记录")
-        recent_label.setStyleSheet("color: #8888a8; font-size: 12px; font-weight: 600;")
-        layout.addWidget(recent_label)
+        recent_label.setStyleSheet("color: #8888a8; font-size: 12px; font-weight: 600; padding-left: 2px;")
+        recent_label.setAlignment(Qt.AlignLeft)
+        recent_section.addWidget(recent_label)
 
         self._recent_list = QListWidget()
         self._recent_list.setMaximumHeight(200)
@@ -552,7 +736,7 @@ class MainWindow(QMainWindow):
                 border-radius: 6px;
             }
             QListWidget::item {
-                color: #cdd6f4; padding: 6px 10px;
+                color: #cdd6f4; padding: 10px 10px 6px 10px;
                 border-bottom: 1px solid #1e1e30;
             }
             QListWidget::item:hover {
@@ -563,7 +747,8 @@ class MainWindow(QMainWindow):
             }
         """)
         self._recent_list.itemClicked.connect(self._on_recent_clicked)
-        layout.addWidget(self._recent_list)
+        recent_section.addWidget(self._recent_list)
+        layout.addLayout(recent_section)
 
         # ── 法律声明滚动字幕 ──
         self._marquee_text = "此软件已申请专利保护，违法使用将遭受刑事诉讼。"
@@ -579,7 +764,6 @@ class MainWindow(QMainWindow):
     def _connect_signals(self):
         # 按钮
         self._btn_record.clicked.connect(self._on_record_clicked)
-        self._btn_settings.clicked.connect(self._on_settings)
         self._mode_combo.currentIndexChanged.connect(self._on_mode_combo_changed)
 
         # 引擎切换已由 QAction.toggled 连接，无需额外处理
@@ -722,7 +906,6 @@ class MainWindow(QMainWindow):
             self._btn_record.setEnabled(False)
             self._lbl_status.setStyleSheet("color: #f59e0b; font-size: 14px;")
             self._lbl_status.setText("连接引擎中...")
-            self._btn_settings.setEnabled(False)
         elif state == "recording":
             self._btn_record.setText("⏹ 停止录音")
             self._btn_record.setEnabled(True)
@@ -730,7 +913,6 @@ class MainWindow(QMainWindow):
             self._btn_record.style().unpolish(self._btn_record)
             self._btn_record.style().polish(self._btn_record)
             self._lbl_status.setStyleSheet("color: #f43f5e; font-size: 14px;")
-            self._btn_settings.setEnabled(False)
             self._voiceprint.start()
         elif state == "processing":
             self._btn_record.setText("⏳ 处理中...")
@@ -744,7 +926,6 @@ class MainWindow(QMainWindow):
             self._btn_record.style().unpolish(self._btn_record)
             self._btn_record.style().polish(self._btn_record)
             self._lbl_status.setStyleSheet("color: #4ade80; font-size: 14px;")
-            self._btn_settings.setEnabled(True)
             self._voiceprint.stop()
 
     def _on_level(self, level: float):
@@ -787,6 +968,8 @@ class MainWindow(QMainWindow):
         )
         self._history_db.add(entry)
         self._history_panel.refresh()
+        if hasattr(self, '_stats_page') and self._stats_page:
+            self._stats_page.refresh()
         if hasattr(self, '_recent_list'):
             self._refresh_recent_list()
 
@@ -1153,11 +1336,23 @@ class MainWindow(QMainWindow):
 
         return card
 
-    def _on_settings(self):
-        dlg = SettingsDialog(self._config, self)
-        dlg.exec()
-        # 设置可能修改了 Key / 开关 / 主模型 → 刷新快速切换下拉框
-        self._refresh_primary_combo()
+    def _on_theme_changed(self, theme: str):
+        """设置对话框中主题切换时的即时预览"""
+        from ..main import apply_theme
+        from PySide6.QtWidgets import QApplication
+        apply_theme(QApplication.instance(), theme)
+        self._apply_stylesheet()
+
+    def _on_mute_toggled(self, enabled: bool):
+        """设置页静音开关 → 更新 audio_muter 实例"""
+        if hasattr(self, '_audio_muter') and self._audio_muter:
+            self._audio_muter.enabled = enabled
+
+    def _apply_stylesheet(self):
+        """根据当前配置的主题应用对应的样式表"""
+        theme = self._config.theme
+        style = MAIN_STYLE if theme == "dark" else LIGHT_MAIN_STYLE
+        self.setStyleSheet(style)
 
     # ── 版本更新 ──
 
@@ -1301,6 +1496,9 @@ class MainWindow(QMainWindow):
     def _on_sidebar_changed(self, index: int):
         """左侧导航切换 → 右侧页面切换"""
         self._stack.setCurrentIndex(index)
+        # 切换到统计页时自动刷新
+        if index == 0 and hasattr(self, '_stats_page') and self._stats_page:
+            self._stats_page.refresh()
 
     def _on_recent_clicked(self, item: QListWidgetItem):
         """首页最近记录被点击 → 跳转到历史记录页并定位"""
@@ -1322,12 +1520,14 @@ class MainWindow(QMainWindow):
             self._recent_list.addItem(item)
 
     def show_license_expired_warning(self):
-        """许可证过期警告"""
+        """许可证过期警告 — 不退出，留在原页面"""
+        # 刷新侧边栏底栏显示过期状态
+        if hasattr(self, '_sidebar') and self._sidebar:
+            self._sidebar.refresh_banner()
         QMessageBox.warning(
             self, "许可证已过期",
-            "您的 Pro 许可证已过期，请续费后重新升级Pro。\n软件将退出。"
+            "您的 Pro 许可证已过期。\n功能受限，请续费后重新升级Pro。"
         )
-        self.force_quit()
 
     def set_tray(self, tray):
         """关联系统托盘，关闭窗口时最小化到托盘而非退出"""

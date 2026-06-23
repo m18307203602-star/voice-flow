@@ -61,6 +61,10 @@ class AliyunStreamingASR:
                 break
 
     def start(self):
+        # ★ 防御性重置：确保不会残留上一次的识别文本
+        self._text = ""
+        self._error = None
+        self._done.clear()
         self._log("阿里: 连接中...")
         url = "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
         self._ws = websocket.create_connection(

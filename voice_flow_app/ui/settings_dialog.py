@@ -1,14 +1,15 @@
 """设置对话框 — API 密钥输入 · 左侧导航 + 右侧内容"""
 import re
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel,
+    QVBoxLayout, QHBoxLayout, QLabel,
     QLineEdit, QPushButton, QTabWidget, QWidget,
     QFormLayout, QMessageBox, QListWidget, QListWidgetItem,
     QStackedWidget, QSplitter, QScrollArea, QFrame,
     QComboBox, QMenu,
 )
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QKeyEvent, QColor
+from PySide6.QtCore import Qt, Signal, QRectF
+from PySide6.QtGui import QKeyEvent, QColor, QPainter, QPen, QBrush, QFont
+from PySide6.QtWidgets import QStyleOption, QStyle
 
 from .credential_sync import CredentialSyncWidget
 
@@ -271,6 +272,82 @@ class _KeyCaptureLineEdit(QLineEdit):
         self._update_display()
 
 
+class _HoverTipLabel(QLabel):
+    """鼠标悬停时弹出白色说明气泡 — 不受 QToolTip 样式继承干扰"""
+
+    def __init__(self, tip_text: str, parent=None):
+        super().__init__(parent)
+        self._tip = QLabel(tip_text)
+        self._tip.setWindowFlags(Qt.ToolTip)
+        self._tip.setStyleSheet(
+            "color: #ffffff; background-color: #1c1c2e;"
+            "padding: 8px 12px; border: 1px solid #2a2a3e;"
+            "border-radius: 8px; font-size: 12px;"
+        )
+        self._tip.setWordWrap(True)
+        self._tip.hide()
+
+    def enterEvent(self, event):
+        """鼠标进入 → 显示气泡"""
+        pos = self.mapToGlobal(self.rect().bottomLeft())
+        self._tip.move(pos.x(), pos.y() + 4)
+        # adjustSize 会让 QLabel 缩到最小，不用它
+        self._tip.setFixedWidth(400)
+        self._tip.show()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        """鼠标离开 → 隐藏气泡"""
+        self._tip.hide()
+        super().leaveEvent(event)
+
+
+class _SlideToggle(QWidget):
+    """iOS 风格滑动开关 — 蓝色底 + 白色小球"""
+
+    toggled = Signal(bool)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._checked = True
+        self.setFixedSize(44, 24)
+        self.setCursor(Qt.PointingHandCursor)
+
+    def isChecked(self) -> bool:
+        return self._checked
+
+    def setChecked(self, checked: bool):
+        self._checked = checked
+        self.update()
+
+    def mousePressEvent(self, event):
+        self._checked = not self._checked
+        self.toggled.emit(self._checked)
+        self.update()
+        super().mousePressEvent(event)
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+
+        r = self.rect()
+        # 背景：蓝色 ON / 灰色 OFF
+        bg = QColor("#7c5cfc") if self._checked else QColor("#585b70")
+        p.setBrush(QBrush(bg))
+        p.setPen(Qt.NoPen)
+        p.drawRoundedRect(QRectF(r), 12, 12)
+
+        # 白色小球
+        d = 20
+        gap = 2
+        x = r.right() - d - gap if self._checked else r.left() + gap
+        y = (r.height() - d) / 2
+        p.setBrush(QBrush(QColor("#ffffff")))
+        p.drawEllipse(QRectF(x, y, d, d))
+
+        p.end()
+
+
 SETTINGS_STYLE = """
 QDialog {
     background-color: #0d0d14;
@@ -327,31 +404,98 @@ QListWidget::item:selected {
 QListWidget::item:hover {
     background-color: #222238;
 }
+QToolTip {
+    background-color: #1c1c2e;
+    color: #ffffff;
+    border: 1px solid #2a2a3e;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 12px;
+}
+"""
+
+LIGHT_SETTINGS_STYLE = """
+QDialog {
+    background-color: #f5f5f5;
+}
+QLabel {
+    color: #1e1e2e;
+    font-size: 13px;
+}
+QLineEdit {
+    background-color: #ffffff;
+    color: #1e1e2e;
+    border: 1px solid #d0d0d0;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 13px;
+    min-width: 280px;
+}
+QLineEdit:focus {
+    border-color: #7c5cfc;
+}
+QTabWidget::pane {
+    border: 1px solid #d0d0d0;
+    border-radius: 12px;
+    background-color: #f5f5f5;
+}
+QTabBar::tab {
+    background-color: #ffffff;
+    color: #666666;
+    padding: 8px 20px;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    margin-right: 4px;
+}
+QTabBar::tab:selected {
+    background-color: #e8e8f8;
+    color: #1e1e2e;
+}
+QListWidget {
+    background-color: #ffffff;
+    border: 1px solid #d0d0d0;
+    border-radius: 12px;
+    outline: none;
+}
+QListWidget::item {
+    color: #666666;
+    padding: 10px 16px;
+    border-bottom: 1px solid #e0e0e0;
+    font-size: 13px;
+}
+QListWidget::item:selected {
+    background-color: #e8e8f8;
+    color: #1e1e2e;
+}
+QListWidget::item:hover {
+    background-color: #f0f0f0;
+}
+QToolTip {
+    background-color: #ffffff;
+    color: #1e1e2e;
+    border: 1px solid #d0d0d0;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 12px;
+}
 """
 
 
-class SettingsDialog(QDialog):
-    """设置对话框 — 左侧纵向导航 + 右侧内容面板"""
+class SettingsPage(QWidget):
+    """设置页面 — 左侧纵向导航 + 右侧内容面板，嵌入主窗口"""
+
+    theme_changed = Signal(str)  # "dark" | "light"
+    mute_toggled = Signal(bool)  # True=静音, False=不静音
 
     def __init__(self, config, parent=None):
         super().__init__(parent)
         self._config = config
         self._comparison_models = []  # 对比模型列表，由 _load_values 填充
-        self.setWindowTitle("设置")
-        self.setStyleSheet(SETTINGS_STYLE)
-
-        # 与主窗口同宽同位置，高度为 75%，不遮挡底部引擎/模式/录音控件
-        if parent:
-            pg = parent.geometry()
-            self.setGeometry(pg.x(), pg.y(), pg.width(), int(pg.height() * 0.75))
+        self._selected_theme = config.theme  # 当前选择的主题
 
         root = QVBoxLayout(self)
         root.setContentsMargins(16, 16, 16, 16)
         root.setSpacing(12)
-
-        title = QLabel("设置")
-        title.setStyleSheet("font-size: 16px; font-weight: bold; color: #e4e4f0;")
-        root.addWidget(title)
 
         # ── 左右分栏：纵向导航列表 + 内容区 ──
         splitter = QSplitter(Qt.Horizontal)
@@ -362,6 +506,8 @@ class SettingsDialog(QDialog):
         self._nav.addItem(QListWidgetItem("⚙️ 配置密钥"))
         self._nav.addItem(QListWidgetItem("🔑 密钥管理"))
         self._nav.addItem(QListWidgetItem("⌨️ 快捷键"))
+        self._nav.addItem(QListWidgetItem("🎨 个性化"))
+        self._nav.addItem(QListWidgetItem("🖥 系统"))
         self._nav.currentRowChanged.connect(self._on_nav_changed)
         splitter.addWidget(self._nav)
 
@@ -400,6 +546,12 @@ class SettingsDialog(QDialog):
 
         # 页面 2：快捷键
         self._stack.addWidget(self._make_prefs_tab())
+
+        # 页面 3：个性化
+        self._stack.addWidget(self._make_personalization_tab())
+
+        # 页面 4：系统
+        self._stack.addWidget(self._make_system_tab())
 
         splitter.addWidget(self._stack)
         splitter.setStretchFactor(0, 0)
@@ -443,6 +595,12 @@ class SettingsDialog(QDialog):
         self._nav.setCurrentRow(0)  # 默认选中配置密钥
         self._load_values()
 
+    def _apply_dialog_stylesheet(self):
+        """根据当前主题应用对应的对话框样式表"""
+        theme = self._config.theme
+        style = SETTINGS_STYLE if theme == "dark" else LIGHT_SETTINGS_STYLE
+        self.setStyleSheet(style)
+
     def _on_nav_changed(self, row: int):
         self._stack.setCurrentIndex(row)
         # 底部按钮按页面切换
@@ -456,6 +614,16 @@ class SettingsDialog(QDialog):
             self._btn_clear_page.hide()
             self._btn_overview.hide()
             self._btn_save.show()
+        elif row == 3:  # 个性化 — 只需要保存
+            self._btn_clear_all.hide()
+            self._btn_clear_page.hide()
+            self._btn_overview.hide()
+            self._btn_save.show()
+        elif row == 4:  # 系统 — 即时生效，不需要保存
+            self._btn_clear_all.hide()
+            self._btn_clear_page.hide()
+            self._btn_overview.hide()
+            self._btn_save.hide()
         else:  # 配置密钥 — 不需要底部按钮（自动保存）
             self._btn_clear_all.hide()
             self._btn_clear_page.hide()
@@ -919,6 +1087,258 @@ class SettingsDialog(QDialog):
                 available.append(display_name)
         return available
 
+    def _make_personalization_tab(self) -> QWidget:
+        """个性化设置：主题切换"""
+        w = QWidget()
+        layout = QVBoxLayout(w)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(20)
+
+        # ── 标题 ──
+        title = QLabel("主题外观")
+        title.setStyleSheet("color: #cba6f7; font-size: 16px; font-weight: bold;")
+        layout.addWidget(title)
+
+        desc = QLabel("选择适合你的背景风格，即刻生效。")
+        desc.setStyleSheet("color: #8888a8; font-size: 12px;")
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
+
+        layout.addSpacing(8)
+
+        # ── 主题选项容器 ──
+        themes_row = QHBoxLayout()
+        themes_row.setSpacing(16)
+
+        # 深夜模式卡片
+        self._card_dark = QPushButton()
+        self._card_dark.setFixedSize(180, 120)
+        self._card_dark.setCursor(Qt.PointingHandCursor)
+        self._card_dark.clicked.connect(lambda: self._select_theme("dark"))
+        self._setup_theme_card(
+            self._card_dark,
+            emoji="🌙",
+            title_text="深夜模式",
+            desc_text="深色背景，护眼舒适\n适合夜间使用",
+            bg="#1e1e2e",
+            text_color="#cdd6f4",
+        )
+
+        # 白天模式卡片
+        self._card_light = QPushButton()
+        self._card_light.setFixedSize(180, 120)
+        self._card_light.setCursor(Qt.PointingHandCursor)
+        self._card_light.clicked.connect(lambda: self._select_theme("light"))
+        self._setup_theme_card(
+            self._card_light,
+            emoji="☀️",
+            title_text="白天模式",
+            desc_text="白色背景，清晰明亮\n适合白天使用",
+            bg="#f5f5f5",
+            text_color="#1e1e2e",
+        )
+
+        themes_row.addWidget(self._card_dark)
+        themes_row.addWidget(self._card_light)
+        themes_row.addStretch()
+        layout.addLayout(themes_row)
+
+        # ── 当前选中提示 ──
+        self._lbl_theme_status = QLabel()
+        self._lbl_theme_status.setStyleSheet(
+            "color: #cba6f7; font-size: 13px; font-weight: bold;"
+        )
+        layout.addWidget(self._lbl_theme_status)
+
+        layout.addStretch()
+        return w
+
+    def _make_system_tab(self) -> QWidget:
+        """系统设置：录音静音开关 + 开机自启动"""
+        w = QWidget()
+        layout = QVBoxLayout(w)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(20)
+
+        # ── 标题 ──
+        title = QLabel("系统设置")
+        title.setStyleSheet("color: #cba6f7; font-size: 16px; font-weight: bold;")
+        layout.addWidget(title)
+
+        desc = QLabel("管理 Voice Flow 的系统级行为。")
+        desc.setStyleSheet("color: #8888a8; font-size: 12px;")
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
+
+        layout.addSpacing(8)
+
+        # ── 录音时静音其他应用（上）──
+        section1 = QLabel("录音时静音")
+        section1.setStyleSheet("color: #7c5cfc; font-weight: bold; font-size: 14px;")
+        layout.addWidget(section1)
+
+        mute_toggle_row = QHBoxLayout()
+        mute_toggle_row.setSpacing(12)
+
+        self._lbl_mute_status = _HoverTipLabel(
+            "开启后，录音时自动将其他应用的音频静音，避免干扰语音识别。\n"
+            "关闭后，录音时电脑仍会正常播放声音。"
+        )
+        mute_toggle_row.addWidget(self._lbl_mute_status)
+        mute_toggle_row.addStretch()
+
+        self._tgl_mute = _SlideToggle()
+        self._tgl_mute.toggled.connect(self._on_mute_toggled)
+        mute_toggle_row.addWidget(self._tgl_mute)
+
+        layout.addLayout(mute_toggle_row)
+
+        # ── 分隔线 ──
+        sep = QFrame()
+        sep.setFrameShape(QFrame.HLine)
+        sep.setStyleSheet("background-color: #2a2a3e; max-height: 1px;")
+        layout.addWidget(sep)
+
+        # ── 开机自启动（下）──
+        section2 = QLabel("开机自启动")
+        section2.setStyleSheet("color: #7c5cfc; font-weight: bold; font-size: 14px;")
+        layout.addWidget(section2)
+
+        auto_toggle_row = QHBoxLayout()
+        auto_toggle_row.setSpacing(12)
+
+        self._lbl_autostart_status = _HoverTipLabel(
+            "开启后，Voice Flow 将在系统启动时自动运行，无需手动打开。\n"
+            "建议保持开启，确保随时可用。"
+        )
+        auto_toggle_row.addWidget(self._lbl_autostart_status)
+        auto_toggle_row.addStretch()
+
+        self._tgl_autostart = _SlideToggle()
+        self._tgl_autostart.toggled.connect(self._on_autostart_toggled)
+        auto_toggle_row.addWidget(self._tgl_autostart)
+
+        layout.addLayout(auto_toggle_row)
+
+        # 初始化状态
+        self._refresh_mute_display()
+        self._refresh_autostart_display()
+
+        layout.addStretch()
+        return w
+
+    def _refresh_mute_display(self):
+        """刷新静音开关显示"""
+        enabled = self._config.audio_mute_enabled
+        self._tgl_mute.setChecked(enabled)
+        if enabled:
+            self._lbl_mute_status.setText("🔇 录音时自动静音")
+            self._lbl_mute_status.setStyleSheet("color: #a6e3a1; font-size: 13px;")
+        else:
+            self._lbl_mute_status.setText("🔊 录音时正常播放")
+            self._lbl_mute_status.setStyleSheet("color: #f9e2af; font-size: 13px;")
+
+    def _on_mute_toggled(self, checked: bool):
+        """静音开关切换 — 即时保存配置 + 通知主窗口同步"""
+        self._config.audio_mute_enabled = checked
+        self._config.save()
+        self._refresh_mute_display()
+        self.mute_toggled.emit(checked)
+
+    def _refresh_autostart_display(self):
+        """刷新自启动开关显示"""
+        from voice_flow_app.system.autostart import is_enabled as autostart_is_enabled
+        enabled = autostart_is_enabled()
+        self._tgl_autostart.setChecked(enabled)
+        if enabled:
+            self._lbl_autostart_status.setText("✅ 开机自启动")
+            self._lbl_autostart_status.setStyleSheet("color: #a6e3a1; font-size: 13px;")
+        else:
+            self._lbl_autostart_status.setText("⏸ 开机自启动已关闭")
+            self._lbl_autostart_status.setStyleSheet("color: #f38ba8; font-size: 13px;")
+
+    def _on_autostart_toggled(self, checked: bool):
+        """自启动开关切换 — 即时保存配置"""
+        from voice_flow_app.system.autostart import set_enabled as autostart_set_enabled
+
+        ok = autostart_set_enabled(checked)
+        if ok:
+            self._config.autostart_enabled = checked
+            self._config.save()
+            self._refresh_autostart_display()
+        else:
+            # 操作失败，恢复开关位置
+            self._tgl_autostart.setChecked(not checked)
+            QMessageBox.warning(self, "操作失败",
+                f"无法{'开启' if checked else '关闭'}开机自启动，请检查系统权限。")
+
+    def _setup_theme_card(self, btn: QPushButton, emoji: str, title_text: str,
+                          desc_text: str, bg: str, text_color: str):
+        """设置主题卡片按钮的内部布局"""
+        inner = QVBoxLayout(btn)
+        inner.setContentsMargins(16, 16, 16, 16)
+        inner.setSpacing(6)
+
+        emoji_lbl = QLabel(emoji)
+        emoji_lbl.setStyleSheet(f"font-size: 28px; background: transparent; color: {text_color};")
+        emoji_lbl.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        inner.addWidget(emoji_lbl)
+
+        name_lbl = QLabel(title_text)
+        name_lbl.setStyleSheet(
+            f"font-size: 14px; font-weight: bold; background: transparent; color: {text_color};"
+        )
+        inner.addWidget(name_lbl)
+
+        info_lbl = QLabel(desc_text)
+        info_lbl.setStyleSheet(
+            f"font-size: 11px; background: transparent; color: {text_color}; opacity: 0.7;"
+        )
+        info_lbl.setWordWrap(True)
+        inner.addWidget(info_lbl)
+
+        btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {bg};
+                border: 2px solid #45475a;
+                border-radius: 12px;
+                text-align: left;
+            }}
+            QPushButton:hover {{
+                border-color: #cba6f7;
+            }}
+        """)
+
+    def _select_theme(self, theme: str):
+        """选中主题并更新卡片高亮状态"""
+        self._selected_theme = theme
+
+        # 重建卡片样式（避免字符串替换在多次切换后失败）
+        active_border = "border: 3px solid #cba6f7;"
+        inactive_border = "border: 2px solid #45475a;"
+
+        dark_border = active_border if theme == "dark" else inactive_border
+        self._card_dark.setStyleSheet(
+            self._card_dark.styleSheet().replace(
+                "border: 2px solid #45475a;", dark_border
+            ).replace("border: 3px solid #cba6f7;", dark_border)
+        )
+
+        light_border = active_border if theme == "light" else inactive_border
+        self._card_light.setStyleSheet(
+            self._card_light.styleSheet().replace(
+                "border: 2px solid #45475a;", light_border
+            ).replace("border: 3px solid #cba6f7;", light_border)
+        )
+
+        # 更新状态文本
+        display = "🌙 深夜模式" if theme == "dark" else "☀️ 白天模式"
+        self._lbl_theme_status.setText(f"当前选择：{display}")
+
+        # 即时预览主题（更新自身 + 通知主窗口）
+        self._apply_dialog_stylesheet()
+        self.theme_changed.emit(theme)
+
     def _make_prefs_tab(self) -> QWidget:
         w = QWidget()
         form = QFormLayout(w)
@@ -1136,6 +1556,11 @@ class SettingsDialog(QDialog):
         # 更新密钥填写状态标识
         self._update_key_indicators()
 
+        # 个性化：主题
+        self._selected_theme = self._config.theme
+        # 更新卡片选中状态
+        self._select_theme(self._selected_theme)
+
     def _refresh_primary_combo(self):
         """根据当前 Key 状态刷新主模型下拉框"""
         current = self._combo_primary.currentText()
@@ -1186,6 +1611,10 @@ class SettingsDialog(QDialog):
         # 模型对比配置
         self._config.primary_model = self._combo_primary.currentText()
         self._config.comparison_models = list(self._comparison_models)
+
+        # 个性化
+        if hasattr(self, '_selected_theme'):
+            self._config.theme = self._selected_theme
 
         self._config.save()
         QMessageBox.information(self, "保存", "配置已保存")

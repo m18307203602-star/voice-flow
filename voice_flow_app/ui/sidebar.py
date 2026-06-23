@@ -79,7 +79,7 @@ class SidebarWidget(QWidget):
             item.setData(Qt.UserRole, key)
             self._nav_list.addItem(item)
 
-        self._nav_list.setCurrentRow(1)  # 默认选中"控制台"（第 2 项）
+        self._nav_list.setCurrentRow(0)  # 默认选中"首页"
         self._nav_list.currentRowChanged.connect(self._on_row_changed)
         layout.addWidget(self._nav_list, 1)  # stretch=1，占满剩余空间
 

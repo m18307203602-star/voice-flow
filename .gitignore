@@ -44,3 +44,32 @@ data/history/
 # Build artifacts
 build_tools/dist/
 build_tools/build/
+
+# Test / debug scripts (root level only)
+/_*.py
+/_*.txt
+/_*.json
+/_*.html
+/_*.md
+/download_models.py
+/run_batch_test.py
+/test_cases.py
+
+# Runtime data
+data/
+voice_flow.db
+*.db
+
+# Models (large files)
+vosk-model-*/
+
+# Build state (local only)
+build_tools/.build_state.json
+
+# Stray/corrupted paths
+/voice-workflowbuildvoiceflow/
+
+# Temp deploy scripts
+server_deploy/_*
+server_deploy/_*.py
+server_deploy/_*.txt

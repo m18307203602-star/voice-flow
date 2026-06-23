@@ -1,14 +1,14 @@
 """统计页面 — 指标卡片 + 扇形图 + 柱状图"""
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QGridLayout, QSizePolicy
-from PySide6.QtCore import Qt, QRect
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QGridLayout, QSizePolicy, QPushButton
+from PySide6.QtCore import Qt, QRect, Signal
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QFontMetrics, QPainterPath, QLinearGradient
 import math
 
 
 STATS_STYLE = """
 QWidget#statsPage { background-color: #0d0d14; }
-QLabel#cardValue { color: #cba6f7; font-size: 28px; font-weight: bold; }
-QLabel#cardLabel { color: #8888a8; font-size: 12px; }
+QLabel#cardValue { color: #cba6f7; font-size: 24px; font-weight: bold; }
+QLabel#cardLabel { color: #8888a8; font-size: 11px; }
 QLabel#sectionTitle { color: #e4e4f0; font-size: 15px; font-weight: 600; }
 """
 
@@ -17,12 +17,14 @@ class _PieChart(QWidget):
     """扇形图 — QPainter 手绘"""
 
     COLORS = {
-        # 英文 key（数据源）→ 颜色
-        "tencent": QColor("#7c5cfc"),
-        "tencent_sentence": QColor("#7c5cfc"),
-        "aliyun": QColor("#f97316"),
-        "iflytek": QColor("#22c55e"),
-        # 中文 key（折分后的显示名）→ 同一颜色
+        # 英文 key（数据源）→ 颜色（腾讯流式/短连各不同色）
+        "tencent": QColor("#7c5cfc"),           # 腾讯流式 → 紫色
+        "tencent_sentence": QColor("#5b8def"),   # 腾讯短连 → 蓝色
+        "aliyun": QColor("#f97316"),             # 阿里云 → 橙色
+        "iflytek": QColor("#22c55e"),            # 讯飞 → 绿色
+        # 中文 key（含后缀精确匹配 + 基础回退）
+        "腾讯(流式)": QColor("#7c5cfc"),
+        "腾讯(短连)": QColor("#5b8def"),
         "腾讯": QColor("#7c5cfc"),
         "阿里云": QColor("#f97316"),
         "讯飞": QColor("#22c55e"),
@@ -32,7 +34,7 @@ class _PieChart(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._data: dict[str, float] = {}  # {label: value}
-        self.setMinimumSize(220, 200)
+        self.setMinimumWidth(220)  # 高度由外部布局控制，对齐卡片
 
     def set_data(self, data: dict[str, float]):
         """设置数据 {标签: 数值}"""
@@ -42,7 +44,7 @@ class _PieChart(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
-        rect = self.rect().adjusted(10, 10, -10, -10)
+        rect = self.rect().adjusted(10, 2, -10, -2)  # 上下极小边距，饼圆尽量撑满
 
         if not self._data or sum(self._data.values()) == 0:
             painter.setPen(QColor("#8888a8"))
@@ -57,7 +59,7 @@ class _PieChart(QWidget):
         pie_w = int((rect.width() - 10) * 0.55)
         side = min(pie_w, rect.height())
         pie_left = rect.left()
-        pie_top = rect.top() + (rect.height() - side) // 2
+        pie_top = rect.top()  # 贴顶部，与卡片对齐
         pie_rect = QRect(pie_left, pie_top, side, side)
         base_center = pie_rect.center()
         base_radius = side // 2
@@ -78,7 +80,8 @@ class _PieChart(QWidget):
             share = val / total if total > 0 else 0
             explode = int(max_explode * share)
 
-            color = self.COLORS.get(label.split("(")[0].strip(), self._FALLBACK)
+            # 先精确匹配完整标签（如"腾讯(流式)"），再回退到基础名
+            color = self.COLORS.get(label) or self.COLORS.get(label.split("(")[0].strip(), self._FALLBACK)
             colors_used.append(color)
 
             # 计算外推方向（扇区中心角）
@@ -97,41 +100,42 @@ class _PieChart(QWidget):
 
             start_angle += span
 
-        # ── 右侧图例（竖向排列，每行：色块 + 名称 + 占比 + 次数） ──
+        # ── 右侧图例（色块 + 名称 + 比例 + 进度条）──
         legend_x = pie_rect.right() + 16
-        legend_y = pie_rect.top() + 4
-        line_h = 26
-        painter.setFont(QFont("Microsoft YaHei", 10))
+        legend_y = pie_rect.top() + 6
+        row_h = 52  # 每行高度（4行×52=208px）
+        painter.setFont(QFont("Microsoft YaHei", 9))
 
         for label, val, color in zip(labels, values, colors_used):
             pct = val / total * 100 if total > 0 else 0
 
-            # 色块
+            # 色块 10×10（贴行顶，居中偏上）
             painter.setBrush(QBrush(color))
             painter.setPen(Qt.NoPen)
-            painter.drawRoundedRect(legend_x, legend_y, 14, 14, 3, 3)
+            painter.drawRoundedRect(legend_x, legend_y + 4, 10, 10, 2, 2)
 
-            # 名称
+            # 名称（色块右侧，留足够间距）
             painter.setPen(QColor("#e4e4f0"))
-            painter.drawText(legend_x + 20, legend_y + 12, label)
+            painter.drawText(legend_x + 18, legend_y + 12, label)
 
-            # 百分比
-            painter.setPen(QColor("#8888a8"))
+            # 比例 + 调用次数（名称下方，行高内的中间位置）
+            painter.setPen(QColor("#a8a8c0"))
             pct_text = f"{pct:.1f}%"
-            painter.drawText(legend_x + 20, legend_y + 26, f"占比 {pct_text}  |  调用 {int(val)} 次")
+            painter.drawText(legend_x + 18, legend_y + 28,
+                           f"占比 {pct_text}  |  {int(val)} 次")
 
-            # 细进度条（视觉化占比）
-            bar_x = legend_x + 20
-            bar_y = legend_y + 30
-            bar_w = 100
-            bar_h = 3
+            # 细进度条（行底附近）
+            bar_x = legend_x + 18
+            bar_y = legend_y + 42
+            bar_w = 90
+            bar_h = 2
             painter.setPen(Qt.NoPen)
             painter.setBrush(QColor("#2a2a3e"))
             painter.drawRoundedRect(bar_x, bar_y, bar_w, bar_h, 1, 1)
             painter.setBrush(QBrush(color))
             painter.drawRoundedRect(bar_x, bar_y, int(bar_w * pct / 100), bar_h, 1, 1)
 
-            legend_y += line_h + 22  # 行高 + 进度条空间
+            legend_y += row_h
 
 
 class _BarChart(QWidget):
@@ -140,7 +144,7 @@ class _BarChart(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._data: list[dict] = []  # [{"date": "06-15", "count": 3, "duration": 45.2}, ...]
-        self.setMinimumSize(280, 200)
+        self.setMinimumSize(280, 300)
 
     def set_data(self, data: list[dict]):
         self._data = data
@@ -152,9 +156,9 @@ class _BarChart(QWidget):
 
         # ── 留出左侧 Y 轴标注空间 + 顶部柱上文字空间 ──
         left_margin = 44    # 加大，给竖排标签足够空间
-        top_margin = 22     # 柱顶标注文字的空间
-        bottom_margin = 30
-        right_margin = 12
+        top_margin = 12     # 柱顶标注文字空间（压缩以拉伸纵轴）
+        bottom_margin = 70  # 底部：柱底→日期标签→"日期"，三层无重叠
+        right_margin = 20   # 右侧留白
         rect = self.rect().adjusted(left_margin, top_margin, -right_margin, -bottom_margin)
 
         if not self._data:
@@ -164,9 +168,9 @@ class _BarChart(QWidget):
             return
 
         max_count = max((d.get("count", 0) for d in self._data), default=1)
-        # Y 轴刻度范围：至少显示 5，且向上取整
-        y_max = max(5, int(max_count * 1.2))
-        y_step = max(1, y_max // 4)
+        # Y 轴刻度：紧凑头部空间（8%），5 档刻度充分利用纵向空间
+        y_max = max(5, int(max_count * 1.08))
+        y_step = max(1, max(1, y_max // 5))
 
         chart_left = rect.left()
         chart_right = rect.right()
@@ -186,14 +190,14 @@ class _BarChart(QWidget):
             painter.setPen(QPen(QColor("#1e1e30"), 1))
             painter.drawLine(chart_left, y, chart_right, y)
 
-            # Y 轴标签
-            painter.setPen(QColor("#666680"))
+            # Y 轴标签（白色，清晰可读）
+            painter.setPen(QColor("#ffffff"))
             painter.drawText(2, y - 8, left_margin - 8, 16,
                            Qt.AlignRight | Qt.AlignVCenter, str(tick_val))
 
         # ── 柱子和数据 ──
         n = len(self._data)
-        bar_w = min(28, (chart_right - chart_left) // n - 10)
+        bar_w = min(20, (chart_right - chart_left) // n - 14)
         spacing = ((chart_right - chart_left) - bar_w * n) // (n + 1)
 
         painter.setPen(Qt.NoPen)
@@ -212,18 +216,21 @@ class _BarChart(QWidget):
             painter.drawRoundedRect(x, bar_top_y, bar_w, bar_h, 4, 4)
 
             # ── 柱顶上方标注：次数（大字）+ 时长（小字） ──
-            # 次数 — 柱子上方留足够间距
-            painter.setPen(QColor("#cdd6f4"))
+            # 文本区域加宽，防止 "14min" / "14分钟" 等被裁切
+            label_w = bar_w + 20  # 确保足够宽
+
+            # 次数 — 柱子上方留足够间距（白色加粗）
+            painter.setPen(QColor("#ffffff"))
             painter.setFont(QFont("Microsoft YaHei", 9, QFont.Bold))
-            painter.drawText(x - 4, bar_top_y - 30, bar_w + 8, 16,
+            painter.drawText(x - 10, bar_top_y - 30, label_w, 16,
                            Qt.AlignCenter, str(count))
 
             # 时长 — 次数下方，远离柱子色块
             dur = d.get("duration", 0)
             dur_text = f"{int(dur)}s" if dur < 60 else f"{dur/60:.0f}min"
-            painter.setPen(QColor("#777790"))
+            painter.setPen(QColor("#c8c8d8"))
             painter.setFont(QFont("Microsoft YaHei", 8))
-            painter.drawText(x - 4, bar_top_y - 14, bar_w + 8, 12,
+            painter.drawText(x - 10, bar_top_y - 14, label_w, 12,
                            Qt.AlignCenter, dur_text)
 
             # 日期标签
@@ -232,16 +239,26 @@ class _BarChart(QWidget):
                 date_label = date_label[5:]  # "06-15"
             elif len(date_label) >= 5:
                 date_label = date_label[-5:]
-            painter.setPen(QColor("#8888a8"))
+            painter.setPen(QColor("#e8e8f0"))
             painter.setFont(QFont("Microsoft YaHei", 9))
-            painter.drawText(x - 4, chart_bottom + 10, bar_w + 8, 16,
-                           Qt.AlignCenter, date_label)
+            # 中文日期（六月十六）至少需要 48px 宽才能完整显示
+            date_rect_w = max(bar_w + 24, 48)
+            painter.drawText(x - (date_rect_w - bar_w) // 2, chart_bottom + 14,
+                           date_rect_w, 16, Qt.AlignCenter, date_label)
 
-        # ── 底部标注：横轴含义 ──
-        painter.setPen(QColor("#555570"))
-        painter.setFont(QFont("Microsoft YaHei", 10))
-        painter.drawText(rect.left(), self.rect().bottom() - 4,
-                        rect.width(), 16, Qt.AlignCenter, "日期")
+        # ── 底部标注：横轴含义（白色加粗，字间距） ──
+        painter.setPen(QColor("#ffffff"))
+        font = QFont("Microsoft YaHei", 10, QFont.Bold)
+        painter.setFont(font)
+        fm = QFontMetrics(font)
+        ch1_w = fm.horizontalAdvance("日")
+        ch2_w = fm.horizontalAdvance("期")
+        gap = 6  # 字间距
+        total_w = ch1_w + gap + ch2_w
+        start_x = rect.left() + (rect.width() - total_w) // 2
+        base_y = self.rect().bottom() - 26
+        painter.drawText(start_x, base_y, ch1_w, 16, Qt.AlignCenter, "日")
+        painter.drawText(start_x + ch1_w + gap, base_y, ch2_w, 16, Qt.AlignCenter, "期")
 
         # ── 左侧标注：纵轴含义（竖排，留足左边距不被裁剪） ──
         painter.save()
@@ -268,10 +285,10 @@ class _StatCard(QFrame):
             "QFrame { background-color: #1c1c2e; border-radius: 10px; "
             "border: 1px solid #2a2a3e; }"
         )
-        self.setFixedHeight(90)
+        self.setFixedHeight(74)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 12, 16, 12)
-        layout.setSpacing(4)
+        layout.setContentsMargins(14, 10, 14, 10)
+        layout.setSpacing(3)
 
         self._value_lbl = QLabel("—")
         self._value_lbl.setObjectName("cardValue")
@@ -289,6 +306,8 @@ class _StatCard(QFrame):
 class StatsPage(QWidget):
     """统计页面"""
 
+    settings_clicked = Signal()
+
     def __init__(self, history_db, parent=None):
         super().__init__(parent)
         self.setObjectName("statsPage")
@@ -299,38 +318,66 @@ class StatsPage(QWidget):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(16)
+        layout.setContentsMargins(20, 16, 20, 28)
+        layout.setSpacing(12)
 
-        # 标题
+        # 标题行：左标题 + 右设置按钮
+        title_row = QHBoxLayout()
         title = QLabel("📊 使用统计")
         title.setObjectName("sectionTitle")
         title.setStyleSheet("font-size: 20px; font-weight: bold;")
-        layout.addWidget(title)
+        title_row.addWidget(title)
+        title_row.addStretch()
+        btn_settings = QPushButton("⚙ 设置")
+        btn_settings.setFixedSize(80, 28)
+        btn_settings.setStyleSheet(
+            "QPushButton { background: #7c5cfc; color: #fff; border: none; "
+            "border-radius: 6px; font-size: 12px; font-weight: bold; }"
+            "QPushButton:hover { background: #9477ff; }"
+        )
+        btn_settings.setCursor(Qt.PointingHandCursor)
+        btn_settings.clicked.connect(self.settings_clicked.emit)
+        title_row.addWidget(btn_settings)
+        layout.addLayout(title_row)
 
-        # ═══════════════════════════════════════════════════
-        # 上半部分：左扇形图 + 右田字卡片
-        # ═══════════════════════════════════════════════════
-        top_row = QHBoxLayout()
-        top_row.setSpacing(20)
+        # ── 节标题（独立行，上移对齐侧边栏"控制台"上边缘） ──
+        _breath = QWidget()
+        _breath.setFixedHeight(4)
+        _breath.setStyleSheet("background: transparent;")
+        layout.addWidget(_breath)
 
-        # ── 左：扇形图 ──
-        pie_layout = QVBoxLayout()
-        pie_layout.setSpacing(8)
+        section_header = QHBoxLayout()
+        section_header.setContentsMargins(0, 0, 0, 0)
+        section_header.setSpacing(6)
+
         pie_title = QLabel("STT 引擎用量分布")
         pie_title.setObjectName("sectionTitle")
-        pie_layout.addWidget(pie_title)
-        self._pie = _PieChart()
-        pie_layout.addWidget(self._pie, 1)
-        top_row.addLayout(pie_layout, 3)
+        section_header.addWidget(pie_title, 3)
 
-        # ── 右：田字形 2×2 卡片 ──
+        cards_title = QLabel("关键指标")
+        cards_title.setObjectName("sectionTitle")
+        section_header.addWidget(cards_title, 2)
+
+        layout.addLayout(section_header)
+
+        # ═══════════════════════════════════════════════════
+        # 上半部分：左扇形图 + 右田字卡片（网格对齐，不含标题）
+        # ═══════════════════════════════════════════════════
+        top_grid = QGridLayout()
+        top_grid.setSpacing(6)
+        top_grid.setColumnStretch(0, 3)
+        top_grid.setColumnStretch(1, 2)
+
+        # ── 扇形图（左）──
+        self._pie = _PieChart()
+        top_grid.addWidget(self._pie, 0, 0, Qt.AlignTop)
+
         cards_grid = QGridLayout()
-        cards_grid.setSpacing(10)
+        cards_grid.setSpacing(8)
         cards_grid.setColumnStretch(0, 1)
         cards_grid.setColumnStretch(1, 1)
-        cards_grid.setRowStretch(0, 1)
-        cards_grid.setRowStretch(1, 1)
+        cards_grid.setRowStretch(0, 0)
+        cards_grid.setRowStretch(1, 0)
 
         self._card_duration = _StatCard("总口述时间")
         cards_grid.addWidget(self._card_duration, 0, 0)
@@ -344,8 +391,27 @@ class StatsPage(QWidget):
         self._card_saved = _StatCard("节省时间")
         cards_grid.addWidget(self._card_saved, 1, 1)
 
-        top_row.addLayout(cards_grid, 2)
-        layout.addLayout(top_row, 3)
+        # 卡片外包裹——与饼图等高，靠上放置
+        card_area = QVBoxLayout()
+        card_area.setContentsMargins(0, 0, 0, 0)
+        card_area.setSpacing(0)
+        card_area.addLayout(cards_grid)
+        card_area.addStretch()
+        top_grid.addLayout(card_area, 0, 1, Qt.AlignTop)
+
+        # 饼图高度 = 卡片区总高（2卡 + 间距）
+        card_grid_height = 2 * 74 + 8  # 156px（卡片区高度）
+        # 饼图最低高度需容纳图例（4行×52px + 边距 ≈ 220px）
+        self._pie.setMinimumHeight(max(card_grid_height, 220))
+        self._pie.setMaximumHeight(max(card_grid_height, 220) * 2)
+
+        layout.addLayout(top_grid, 2)  # 上半部分占比（给柱状图更多空间）
+
+        # 柱状图与上方内容之间的呼吸间距
+        _bar_breath = QWidget()
+        _bar_breath.setFixedHeight(14)
+        _bar_breath.setStyleSheet("background: transparent;")
+        layout.addWidget(_bar_breath)
 
         # ═══════════════════════════════════════════════════
         # 下半部分：柱状图（左半）+ 留空（右半）
@@ -359,8 +425,8 @@ class StatsPage(QWidget):
         self._chart_title2.setObjectName("sectionTitle")
         bar_layout.addWidget(self._chart_title2)
         self._bar = _BarChart()
-        self._bar.setMinimumHeight(180)
-        self._bar.setMaximumHeight(240)
+        self._bar.setMinimumHeight(300)
+        self._bar.setMaximumHeight(380)
         bar_layout.addWidget(self._bar, 1)
         bottom_row.addLayout(bar_layout, 1)
 

@@ -165,7 +165,7 @@ PLATFORM_CATEGORIES = {
     "LLM": {
         "label": "🧠 LLM 大模型",
         "accent": "#7c5cfc",
-        "platforms": ["小米 MiMo", "千问 Plus"],
+        "platforms": ["小米 MiMo", "千问 (百炼)"],
     },
 }
 

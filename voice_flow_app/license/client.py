@@ -49,16 +49,32 @@ async def validate(machine_code: str, license_payload: str) -> dict:
         return r.json()
 
 
-async def heartbeat(machine_code: str, license_payload: str) -> dict:
-    """POST /api/heartbeat — notify server client is online"""
-    async with httpx.AsyncClient(timeout=5.0) as client:
+async def upload_history(machine_code: str, license_payload: str, records: list[dict]) -> dict:
+    """POST /api/history — 批量上传录音历史（含转写原文 + LLM 结果）"""
+    async with httpx.AsyncClient(timeout=15.0) as client:
         r = await client.post(
-            _url("/api/heartbeat"),
+            _url("/api/history"),
             json={
                 "machine_code": machine_code,
                 "license_payload": license_payload,
+                "records": records,
             },
         )
+        r.raise_for_status()
+        return r.json()
+
+
+async def heartbeat(machine_code: str, license_payload: str, system_info: dict | None = None) -> dict:
+    """POST /api/heartbeat — notify server client is online (+ system info)"""
+    body: dict = {
+        "machine_code": machine_code,
+        "license_payload": license_payload,
+    }
+    if system_info:
+        body["system_info"] = system_info
+
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        r = await client.post(_url("/api/heartbeat"), json=body)
         return r.json()
 
 

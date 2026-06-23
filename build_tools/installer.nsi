@@ -6,14 +6,14 @@ Unicode true
 !include "FileFunc.nsh"
 
 !define PRODUCT_NAME "Voice Flow"
-!define PRODUCT_VERSION "2.0.0"
+!define PRODUCT_VERSION "3.0.0"
 !define PRODUCT_PUBLISHER "VoiceFlow"
 !define PRODUCT_WEB_SITE "https://github.com/voice-flow"
 !define PRODUCT_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\VoiceFlow.exe"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
 
 Name "${PRODUCT_NAME} ${PRODUCT_VERSION}"
-OutFile "G:\voice-workflow\dist\VoiceFlow-Setup-2.0.0.exe"
+OutFile "G:\voice-workflow\dist\VoiceFlow-Setup-3.0.0.exe"
 InstallDir "$PROGRAMFILES\VoiceFlow"
 InstallDirRegKey HKLM "${PRODUCT_DIR_REGKEY}" ""
 RequestExecutionLevel admin

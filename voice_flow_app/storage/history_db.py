@@ -150,6 +150,19 @@ class HistoryDB:
             return self._row_to_entry(row)
         return None
 
+    def get_since(self, last_id: int, limit: int = 200) -> list[HistoryEntry]:
+        """获取 last_id 之后的新记录（用于增量上报）"""
+        rows = self._conn.execute(
+            "SELECT * FROM recordings WHERE id > ? ORDER BY id ASC LIMIT ?",
+            (last_id, limit),
+        ).fetchall()
+        return [self._row_to_entry(r) for r in rows]
+
+    def get_last_id(self) -> int:
+        """获取最新记录 ID（没有记录则返回 0）"""
+        row = self._conn.execute("SELECT COALESCE(MAX(id), 0) AS mx FROM recordings").fetchone()
+        return row["mx"]
+
     def get_by_date(self, date_str: str) -> list[HistoryEntry]:
         """获取指定日期的所有录音记录（按时间升序）"""
         rows = self._conn.execute(

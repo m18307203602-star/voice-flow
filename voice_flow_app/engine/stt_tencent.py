@@ -129,6 +129,11 @@ class TencentStreamingASR:
         return True
 
     def start(self):
+        # ★ 防御性重置：确保不会残留上一次的识别文本
+        self._text = ""
+        self._cur_sentence = ""
+        self._done_sentences = []
+        self._error = None
         self._log("腾讯: 连接中...")
         if self._connect_once():
             self._log("腾讯: 已连接")

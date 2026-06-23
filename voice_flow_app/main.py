@@ -20,7 +20,7 @@ try:
     from .output.text_injector import TextInjector
     from .engine.session import VoiceFlowSession
     from .ui.main_window import MainWindow
-    from .ui.settings_dialog import SettingsDialog
+    from .ui.settings_dialog import SettingsPage
     from .ui.system_tray import SystemTray
     from .ui.activation_dialog import ActivationDialog
     from .ui.trial_banner import TrialBanner
@@ -39,7 +39,7 @@ except ImportError:
     from voice_flow_app.output.text_injector import TextInjector
     from voice_flow_app.engine.session import VoiceFlowSession
     from voice_flow_app.ui.main_window import MainWindow
-    from voice_flow_app.ui.settings_dialog import SettingsDialog
+    from voice_flow_app.ui.settings_dialog import SettingsPage
     from voice_flow_app.ui.system_tray import SystemTray
     from voice_flow_app.ui.activation_dialog import ActivationDialog
     from voice_flow_app.ui.trial_banner import TrialBanner
@@ -209,23 +209,75 @@ def main():
         log.warning("检测到已有实例运行，退出")
         sys.exit(0)
 
-    # 全局暗色调色板（系统级别的 fallback）
+    # ── 全局调色板 ──
     app.setStyle("Fusion")
     from PySide6.QtGui import QPalette, QColor
-    palette = QPalette()
-    palette.setColor(QPalette.Window, QColor("#1e1e2e"))
-    palette.setColor(QPalette.WindowText, QColor("#cdd6f4"))
-    palette.setColor(QPalette.Base, QColor("#313244"))
-    palette.setColor(QPalette.AlternateBase, QColor("#45475a"))
-    palette.setColor(QPalette.ToolTipBase, QColor("#1e1e2e"))
-    palette.setColor(QPalette.ToolTipText, QColor("#cdd6f4"))
-    palette.setColor(QPalette.Text, QColor("#cdd6f4"))
-    palette.setColor(QPalette.Button, QColor("#45475a"))
-    palette.setColor(QPalette.ButtonText, QColor("#cdd6f4"))
-    palette.setColor(QPalette.BrightText, QColor("#f38ba8"))
-    palette.setColor(QPalette.Highlight, QColor("#cba6f7"))
-    palette.setColor(QPalette.HighlightedText, QColor("#1e1e2e"))
-    app.setPalette(palette)
+
+    def _dark_palette() -> QPalette:
+        p = QPalette()
+        p.setColor(QPalette.Window, QColor("#1e1e2e"))
+        p.setColor(QPalette.WindowText, QColor("#cdd6f4"))
+        p.setColor(QPalette.Base, QColor("#313244"))
+        p.setColor(QPalette.AlternateBase, QColor("#45475a"))
+        p.setColor(QPalette.ToolTipBase, QColor("#1e1e2e"))
+        p.setColor(QPalette.ToolTipText, QColor("#cdd6f4"))
+        p.setColor(QPalette.Text, QColor("#cdd6f4"))
+        p.setColor(QPalette.Button, QColor("#45475a"))
+        p.setColor(QPalette.ButtonText, QColor("#cdd6f4"))
+        p.setColor(QPalette.BrightText, QColor("#f38ba8"))
+        p.setColor(QPalette.Highlight, QColor("#cba6f7"))
+        p.setColor(QPalette.HighlightedText, QColor("#1e1e2e"))
+        return p
+
+    def _light_palette() -> QPalette:
+        p = QPalette()
+        p.setColor(QPalette.Window, QColor("#f5f5f5"))
+        p.setColor(QPalette.WindowText, QColor("#1e1e2e"))
+        p.setColor(QPalette.Base, QColor("#ffffff"))
+        p.setColor(QPalette.AlternateBase, QColor("#e8e8e8"))
+        p.setColor(QPalette.ToolTipBase, QColor("#ffffff"))
+        p.setColor(QPalette.ToolTipText, QColor("#1e1e2e"))
+        p.setColor(QPalette.Text, QColor("#1e1e2e"))
+        p.setColor(QPalette.Button, QColor("#e0e0e0"))
+        p.setColor(QPalette.ButtonText, QColor("#1e1e2e"))
+        p.setColor(QPalette.BrightText, QColor("#d20f39"))
+        p.setColor(QPalette.Highlight, QColor("#7c5cfc"))
+        p.setColor(QPalette.HighlightedText, QColor("#ffffff"))
+        return p
+
+    def apply_theme(app, theme: str):
+        """应用主题调色板: 'dark' | 'light'"""
+        palette = _dark_palette() if theme == "dark" else _light_palette()
+        app.setPalette(palette)
+        # QToolTip 是顶层弹窗，setStyleSheet 无法穿透，必须用 setPalette
+        from PySide6.QtWidgets import QToolTip
+        from PySide6.QtGui import QPalette, QColor
+        tp = QToolTip.palette()
+        if theme == "dark":
+            tp.setColor(QPalette.ToolTipText, QColor("#ffffff"))
+            tp.setColor(QPalette.ToolTipBase, QColor("#1c1c2e"))
+        else:
+            tp.setColor(QPalette.ToolTipText, QColor("#1e1e2e"))
+            tp.setColor(QPalette.ToolTipBase, QColor("#ffffff"))
+        QToolTip.setPalette(tp)
+        # 同时设字体大小
+        app.setStyleSheet("QToolTip { font-size: 12px; padding: 8px 12px; border-radius: 8px; }")
+
+    # ── 加载配置（在调色板之前，以便读取用户偏好）──
+    config = Config()
+    is_first = not config.load()
+    apply_theme(app, config.theme)
+
+    # ── 开机自启动：首次安装默认开启，后续根据配置自动同步注册表 ──
+    from .system.autostart import is_enabled as autostart_is_enabled
+    from .system.autostart import set_enabled as autostart_set_enabled
+
+    if config.autostart_enabled and not autostart_is_enabled():
+        autostart_set_enabled(True)
+        log.info("开机自启动已启用（首次/配置同步）")
+    elif not config.autostart_enabled and autostart_is_enabled():
+        autostart_set_enabled(False)
+        log.info("开机自启动已关闭（配置同步）")
 
     # ── 应用图标（任务栏 + 标题栏） ──
     from PySide6.QtGui import QIcon
@@ -233,16 +285,15 @@ def main():
     if _icon_path.exists():
         app.setWindowIcon(QIcon(str(_icon_path)))
 
-    # ── 加载配置 ──
-    config = Config()
-    is_first = not config.load()
-
     # 设置许可证服务器地址（在许可证请求之前）
     from .license.client import set_server_url
     set_server_url(config.server_url)
 
+    # ── 历史数据库（提前创建，许可证管理器需要读取历史上报） ──
+    history_db = HistoryDB()
+
     # ── 许可证检查（在登录之前） ──
-    license_mgr = LicenseManager(config)
+    license_mgr = LicenseManager(config, history_db=history_db)
     license_state = license_mgr.load_state()
     log.info("许可证状态: %s", license_state.value)
 
@@ -253,7 +304,7 @@ def main():
                 "您的 Voice Flow 许可证已过期。\n请续费获取新的许可证密钥。")
         elif license_state == LicenseState.TRIAL_EXPIRED:
             QMessageBox.warning(None, "试用已过期",
-                "您的 7 天试用期已结束。\n请升级Pro以继续使用 Voice Flow。")
+                "您的 3 天试用期已结束。\n请升级Pro以继续使用 Voice Flow。")
         elif license_state == LicenseState.LOCKED:
             pass  # No message needed for first launch
 
@@ -278,25 +329,21 @@ def main():
             if not license_mgr.is_usable():
                 sys.exit(0)
 
-    # ── 提示词加载（纯在线模式：失败即退出，绝无本地回退） ──
-    def _load_prompts_safe(log):
-        """从服务器拉取提示词。失败 = 程序不可用，禁止离线使用。"""
+    # ── 提示词加载：先用本地元数据启动，服务器提示词后台加载 ──
+    # ponytail: 同步网络调用阻塞窗口 show()，开机时网络未就绪造成超长等待
+    from .prompts import PROMPTS as _local_prompts
+
+    prompts = dict(_local_prompts)  # 本地副本（system 为空，仅有元数据）
+
+    def _load_prompts_background():
+        """后台线程：从服务器拉取提示词，成功则更新 session"""
         import asyncio
         from .prompts_client import get_prompts
-        from .license.client import set_server_url
 
         machine_code = license_mgr.get_machine_code()
         license_payload = license_mgr.license_payload
         if not machine_code or not license_payload:
-            log.error("提示词：缺少机器码或许可证，无法从服务器获取")
-            QMessageBox.critical(
-                None, "启动失败",
-                "无法获取处理配置：缺少许可证信息。\n"
-                "请确认已激活 Pro 并连接网络后重试。"
-            )
-            sys.exit(1)
-
-        set_server_url(config.server_url)
+            return  # 已在 _load_prompts_safe 中处理，这里静默跳过
 
         server_prompts = None
         loop = asyncio.new_event_loop()
@@ -305,43 +352,21 @@ def main():
                 get_prompts(machine_code, license_payload, config.server_url)
             )
         except Exception as e:
-            log.error("提示词：服务器不可达（%s）", e)
-            QMessageBox.critical(
-                None, "启动失败",
-                "无法连接服务器获取处理配置。\n\n"
-                "Voice Flow 需要联网使用，请检查网络后重试。\n"
-                f"错误详情：{e}"
-            )
-            sys.exit(1)
+            log.error("后台提示词加载失败: %s", e)
         finally:
             loop.close()
 
-        if not server_prompts:
-            log.error("提示词：服务器返回空数据")
-            QMessageBox.critical(
-                None, "启动失败",
-                "服务器未返回有效配置，请稍后重试。"
-            )
-            sys.exit(1)
-
-        if not _verify_prompts(server_prompts, logger=log):
-            log.critical("提示词：哈希校验失败，配置可能被篡改！")
-            QMessageBox.critical(
-                None, "安全警告",
-                "处理配置完整性校验失败！\n\n"
-                "服务器上的配置可能已被篡改，为保护您的数据安全，\n"
-                "程序已拒绝加载。请联系技术支持。"
-            )
-            sys.exit(1)
-
-        log.info("提示词：服务器加载成功（哈希校验通过）")
-        return server_prompts
-
-    prompts = _load_prompts_safe(log)
+        if server_prompts and _verify_prompts(server_prompts, logger=log):
+            log.info("后台提示词加载成功")
+            session._prompts = server_prompts
+        elif server_prompts:
+            log.error("后台提示词哈希校验失败")
+        else:
+            log.error("后台提示词：服务器返回空数据")
 
     # ── 初始化各组件 ──
-    history_db = HistoryDB()
     audio_muter = AudioMuter()
+    audio_muter.enabled = config.audio_mute_enabled
     dictionary = DictionaryManager()
     session = VoiceFlowSession(config, prompts, dictionary=dictionary)
 
@@ -358,6 +383,9 @@ def main():
         dictionary=dictionary,
     )
     window.show()
+
+    # ── 后台加载服务器提示词（不阻塞窗口显示） ──
+    threading.Thread(target=_load_prompts_background, daemon=True).start()
 
     # ── 后台检查更新（启动后 3 秒，不阻塞 UI） ──
     QTimer.singleShot(3000, window.check_for_updates)
@@ -427,7 +455,16 @@ def _show_first_launch_dialog(config, parent):
     msg.setStandardButtons(QMessageBox.Ok)
     msg.exec()
 
-    dlg = SettingsDialog(config, parent)
+    # 嵌入 SettingsPage 到独立对话框（首次启动引导用）
+    from PySide6.QtWidgets import QDialog, QVBoxLayout
+    dlg = QDialog(parent)
+    dlg.setWindowTitle("设置")
+    layout = QVBoxLayout(dlg)
+    layout.setContentsMargins(0, 0, 0, 0)
+    page = SettingsPage(config, dlg)
+    page.theme_changed.connect(lambda t: apply_theme(QApplication.instance(), t))
+    layout.addWidget(page)
+    dlg.resize(900, 700)
     dlg.exec()
 
 

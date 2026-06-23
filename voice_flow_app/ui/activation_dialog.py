@@ -95,6 +95,8 @@ class ActivationDialog(QDialog):
         mc = self._lm.get_machine_code()
         mc_edit = QLineEdit(mc)
         mc_edit.setReadOnly(True)
+        mc_edit.setContextMenuPolicy(Qt.CustomContextMenu)
+        mc_edit.customContextMenuRequested.connect(self._on_context_menu)
         mc_edit.setStyleSheet(
             "QLineEdit { background: #151520; color: #7c5cfc; "
             "border: 1px solid #2a2a3e; border-radius: 4px; "
@@ -103,7 +105,7 @@ class ActivationDialog(QDialog):
         layout.addWidget(QLabel("机器码（发送给供应商获取升级码）："))
         layout.addWidget(mc_edit)
 
-        copy_btn = QPushButton("Copy Machine Code")
+        copy_btn = QPushButton("复制机器码")
         copy_btn.setStyleSheet(
             "QPushButton { background: #2a2a3e; color: #e4e4f0; padding: 4px 12px; "
             "border: none; border-radius: 4px; font-size: 11px; }"
@@ -115,11 +117,13 @@ class ActivationDialog(QDialog):
         layout.addSpacing(4)
 
         # License key input
-        instr = QLabel("输入升级码（正式 Key 或 7 天试用卡）：")
+        instr = QLabel("输入升级码（正式 Key 或 3 天试用卡）：")
         instr.setObjectName("infoLabel")
         layout.addWidget(instr)
 
         self._key_input = QLineEdit()
+        self._key_input.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._key_input.customContextMenuRequested.connect(self._on_context_menu)
         self._key_input.setPlaceholderText("VF-XXXX-XXXX-XXXX-XXXX  or  VF-TRIAL-XXXX-XXXX")
         self._key_input.setMaxLength(23)
         self._key_input.returnPressed.connect(self._on_activate)
@@ -183,6 +187,24 @@ class ActivationDialog(QDialog):
         self._msg_label.setObjectName("successLabel")
         self._msg_label.setStyleSheet("")
         self._msg_label.setText(msg)
+
+    _MENU_MAP = {
+        "Undo": "撤销(&U)", "Redo": "重做(&R)",
+        "Cut": "剪切(&T)", "Copy": "复制(&C)",
+        "Paste": "粘贴(&P)", "Delete": "删除(&D)",
+        "Select All": "全选(&A)",
+    }
+
+    def _on_context_menu(self, pos):
+        """右键菜单 — 替换为标准 Qt 菜单的中文版"""
+        widget = self.sender()
+        menu = widget.createStandardContextMenu()
+        for action in menu.actions():
+            for en, zh in self._MENU_MAP.items():
+                if en in action.text():
+                    action.setText(zh)
+                    break
+        menu.exec(widget.mapToGlobal(pos))
 
     def closeEvent(self, event):
         if not self._allow_close:

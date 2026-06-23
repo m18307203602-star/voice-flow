@@ -43,11 +43,7 @@ DEFAULT_CONFIG = {
         "stt_mode": "short_first",   # STT 策略: "short_first"（短连接优先+流式兜底）| "streaming_only"（仅流式）
         "server_url": "http://39.105.108.173:8000",  # 提示词服务器地址
         "prompts_cache_ttl_days": 7,   # 提示词本地缓存有效期（天）
-    },
-    "auth": {
-        "phone": "",
-        "token": "",
-        "auto_login": False,
+        "theme": "dark",               # 主题: "dark"（深夜模式）| "light"（白天模式）
     },
     "license": {
         "first_launch": 0.0,       # 首次启动 unix timestamp (0=未启动)
@@ -302,38 +298,33 @@ class Config:
     def prompts_cache_ttl_days(self, v: int):
         self.data["preferences"]["prompts_cache_ttl_days"] = v
 
-    # ---- 认证 ----
+    @property
+    def theme(self) -> str:
+        """主题: "dark"（深夜模式）| "light"（白天模式）"""
+        return self.data["preferences"].get("theme", "dark")
+
+    @theme.setter
+    def theme(self, v: str):
+        assert v in ("dark", "light")
+        self.data["preferences"]["theme"] = v
 
     @property
-    def auth_phone(self) -> str:
-        return self.data["auth"]["phone"]
+    def autostart_enabled(self) -> bool:
+        """开机自启动: 默认 True（安装时默认开启）"""
+        return self.data["preferences"].get("autostart_enabled", True)
 
-    @auth_phone.setter
-    def auth_phone(self, v: str):
-        self.data["auth"]["phone"] = v
-
-    @property
-    def auth_token(self) -> str:
-        return self.data["auth"]["token"]
-
-    @auth_token.setter
-    def auth_token(self, v: str):
-        self.data["auth"]["token"] = v
+    @autostart_enabled.setter
+    def autostart_enabled(self, v: bool):
+        self.data["preferences"]["autostart_enabled"] = v
 
     @property
-    def auth_auto_login(self) -> bool:
-        return self.data["auth"]["auto_login"]
+    def audio_mute_enabled(self) -> bool:
+        """录音时自动静音: 默认 True（关闭后录音时系统仍有声音）"""
+        return self.data["preferences"].get("audio_mute_enabled", True)
 
-    @auth_auto_login.setter
-    def auth_auto_login(self, v: bool):
-        self.data["auth"]["auto_login"] = v
-
-    def clear_auth(self):
-        """清除登录凭据（退出登录时调用）"""
-        self.data["auth"]["phone"] = ""
-        self.data["auth"]["token"] = ""
-        self.data["auth"]["auto_login"] = False
-        self.save()
+    @audio_mute_enabled.setter
+    def audio_mute_enabled(self, v: bool):
+        self.data["preferences"]["audio_mute_enabled"] = v
 
     # ---- 许可证 ----
 
