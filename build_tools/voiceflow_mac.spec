@@ -1,19 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""Voice Flow macOS PyInstaller spec 鈥?.app bundle"""
+"""Voice Flow macOS PyInstaller spec — .app bundle"""
 
 import sys
 import os
 from pathlib import Path
 
-_PROJECT = Path(os.path.abspath(SPECPATH)).parent  # SPECPATH = build_tools/, parent = 椤圭洰鏍?_APP = _PROJECT / "voice_flow_app"
+_PROJECT = Path(os.path.abspath(SPECPATH)).parent  # SPECPATH = build_tools/, parent = 项目根
+_APP = _PROJECT / "voice_flow_app"
 
-# 鈹€鈹€ PySide6 鎻掍欢鏀堕泦 鈹€鈹€
+# ── PySide6 插件收集 ──
 import PySide6
 _PYSIDE6 = Path(PySide6.__file__).parent
 
-block_cipher = None  # macOS 涓嶉渶瑕佸瓧鑺傜爜鍔犲瘑
+block_cipher = None  # macOS 不需要字节码加密
 
-# 鈹€鈹€ 鏉′欢 datas锛氳矾寰勫瓨鍦ㄦ墠娣诲姞锛圥ySide6 鎻掍欢甯冨眬鍥犲钩鍙?鐗堟湰鑰屽紓锛夆攢鈹€
+# ── 条件 datas：路径存在才添加（PySide6 插件布局因平台/版本而异）──
 _datas = []
 for _src, _dst in [
     (_PYSIDE6 / "plugins" / "platforms", "PySide6/plugins/platforms"),
@@ -35,7 +36,7 @@ a = Analysis(
         # PySide6
         "PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets",
         "PySide6.QtNetwork", "PySide6.QtMultimedia",
-        # numpy (sounddevice/recorder 渚濊禆)
+        # numpy (sounddevice/recorder 依赖)
         "numpy", "numpy._core", "numpy._core._exceptions",
         "numpy._core._methods", "numpy.core._methods",
         "numpy._core.multiarray", "numpy._core.umath",
@@ -45,16 +46,18 @@ a = Analysis(
         "httpx", "httpcore",
         # websocket
         "websocket",
-        # sqlite3 (C 鎵╁睍锛孭yInstaller 鍙兘婕忔帀)
+        # sqlite3 (C 扩展，PyInstaller 可能漏掉)
         "sqlite3", "_sqlite3", "sqlite3.dbapi2",
-        # 鏍囧噯搴?        "wave", "ssl", "uuid", "queue", "webbrowser",
+        # 标准库
+        "wave", "ssl", "uuid", "queue", "webbrowser",
         "tempfile", "subprocess", "base64", "hmac",
         "secrets", "hashlib", "re", "json", "typing",
         "urllib", "urllib.parse", "datetime", "pathlib",
         "logging", "threading", "os", "sys", "time",
         "abc", "enum", "math", "ctypes",
         "concurrent", "concurrent.futures",
-        # 绗笁鏂瑰簱锛堣法骞冲彴锛?        "pyautogui", "pyperclip", "psutil",
+        # 第三方库（跨平台）
+        "pyautogui", "pyperclip", "psutil",
         "pynput", "pynput.keyboard", "pynput.keyboard._darwin",
         "cryptography", "cryptography.hazmat",
         "cryptography.hazmat.primitives",
@@ -64,7 +67,7 @@ a = Analysis(
         "cryptography.hazmat.primitives.serialization",
         "cryptography.exceptions",
         "paramiko",
-        # 鈹€鈹€ voice_flow_app 妯″潡 鈹€鈹€
+        # ── voice_flow_app 模块 ──
         "voice_flow_app",
         "voice_flow_app.__init__",
         "voice_flow_app.__main__",
@@ -138,7 +141,7 @@ a = Analysis(
         "jupyter", "ipython", "notebook",
         "pip", "setuptools", "pkg_resources",
         "test", "tests", "unittest",
-        # Windows 涓撶敤锛圡ac 鏋勫缓涓嶅畨瑁呰繖浜涳級
+        # Windows 专用（Mac 构建不安装这些）
         "pycaw", "win32api", "win32con", "win32gui",
         "win32process", "win32com", "pythoncom", "comtypes",
         "winsound", "winreg", "wintypes", "wmi",
