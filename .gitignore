@@ -73,3 +73,5 @@ build_tools/.build_state.json
 server_deploy/_*
 server_deploy/_*.py
 server_deploy/_*.txt
+/server_deploy/ssh_dump.py
+/server_deploy/*.txt
