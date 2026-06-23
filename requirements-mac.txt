@@ -1,41 +1,44 @@
-# Voice Flow macOS 依赖
-# 排除 Windows 专用包：pycaw, pywin32, winsound, comtypes, wmi
-# 构建：pip install -r requirements-mac.txt
+# Voice Flow macOS 渚濊禆
+# 鎺掗櫎 Windows 涓撶敤鍖咃細pycaw, pywin32, winsound, comtypes, wmi
+# 鏋勫缓锛歱ip install -r requirements-mac.txt
 
-# ── GUI ──
+# 鈹€鈹€ GUI 鈹€鈹€
 PySide6>=6.5
 
-# ── 音频 ──
+# 鈹€鈹€ 闊抽 鈹€鈹€
 numpy>=2.0
 sounddevice>=0.5
 
-# ── 网络 ──
+# 鈹€鈹€ 缃戠粶 鈹€鈹€
 httpx>=0.28
 httpx-sse>=0.4
 websocket-client>=1.8
 aiohttp>=3.9
 
-# ── 加密 ──
+# 鈹€鈹€ 鍔犲瘑 鈹€鈹€
 cryptography>=43.0
 
-# ── 快捷键 + 注入 ──
+# 鈹€鈹€ 蹇嵎閿?+ 娉ㄥ叆 鈹€鈹€
 pynput>=1.7
 pyautogui>=0.9
 pyperclip>=1.9
 psutil>=6.0
 
-# ── SSH（部署用） ──
+# 鈹€鈹€ SSH锛堥儴缃茬敤锛?鈹€鈹€
 paramiko>=3.5
 
-# ── LLM SDK ──
+# 鈹€鈹€ LLM SDK 鈹€鈹€
 openai>=1.0
 
-# ── 阿里云 STT ──
+# 鈹€鈹€ 闃块噷浜?STT 鈹€鈹€
 dashscope>=1.20
 
-# ── TTS（可选） ──
+# 鈹€鈹€ 鍥炬爣杞崲锛坢acOS .icns锛?鈹€鈹€
+Pillow>=10.0
+
+# 鈹€鈹€ TTS锛堝彲閫夛級 鈹€鈹€
 edge-tts>=7.0
 
-# ── 打包（仅 CI 需要） ──
+# 鈹€鈹€ 鎵撳寘锛堜粎 CI 闇€瑕侊級 鈹€鈹€
 setuptools>=70.0
 pyinstaller>=6.0
